@@ -1,0 +1,5 @@
+# JetBrains IDE cache
+.idea
+
+# MacOS Finder folder configuration
+*/.DS_Store
