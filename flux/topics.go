@@ -48,6 +48,10 @@ func (t *Topics) SetCommonState() string {
 	return fmt.Sprintf("service/%s/set_common_state", t.service)
 }
 
+func (t *Topics) PushDevelopmentMode(guid string) string {
+	return "service/development_mode/" + guid
+}
+
 func (t *Topics) Errors() string {
 	return "service/*/error"
 }
