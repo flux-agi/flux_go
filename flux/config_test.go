@@ -22,9 +22,17 @@ func TestNode_GetConfig(t *testing.T) {
 	t.Cleanup(cancel)
 
 	const (
-		serviceName = "keyFireTestService"
-		config      = "mySupperCoolConfig"
+		serviceName    = "keyFireTestService"
+		internalConfig = "mySupperCoolConfig"
 	)
+	serviceConfig := []flux.NodeConfig[string]{
+		{
+			Alias:       serviceName,
+			InputPorts:  nil,
+			OutputPorts: nil,
+			Config:      internalConfig,
+		},
+	}
 
 	logger := watermill.NewStdLogger(true, true)
 
@@ -41,18 +49,17 @@ func TestNode_GetConfig(t *testing.T) {
 	pub, sub := pubSub, pubSub
 
 	manager := fluxtest.NewFakeManager(pubSub, pubSub, map[string]any{
-		serviceName: config,
+		serviceName: serviceConfig,
 	})
-	node := flux.NewNode(serviceName, flux.WithNodePub(pub), flux.WithNodeSub(sub))
-	t.Cleanup(func() {
-		node.Close(ctx)
-	})
+	node := flux.NewService(serviceName, flux.WithServicePub(pub), flux.WithServiceSub(sub))
+	t.Cleanup(func() { node.Close(ctx) })
 
 	stop := manager.Run(ctx)
 	t.Cleanup(stop)
 
-	cfg, err := flux.GetConfig[string](ctx, node)
+	nodesCfg, err := flux.GetConfig[string](ctx, node)
+	t.Logf("serviceConfig: %s", nodesCfg)
 
 	require.NoError(t, err)
-	assert.Equal(t, config, cfg)
+	assert.Equal(t, internalConfig, nodesCfg[0].Config)
 }

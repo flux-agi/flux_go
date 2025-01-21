@@ -18,7 +18,7 @@ const (
 	StatusError        Status = "ERROR"
 )
 
-func (n *Node) RegisterStatusHandler(r *message.Router) {
+func (n *Service) RegisterStatusHandler(r *message.Router) {
 	r.AddHandler(
 		"flux.request_status",
 		n.topics.RequestStatus(),
@@ -29,7 +29,7 @@ func (n *Node) RegisterStatusHandler(r *message.Router) {
 	)
 }
 
-func (n *Node) handleStatusRequest(_ *message.Message) ([]*message.Message, error) {
+func (n *Service) handleStatusRequest(_ *message.Message) ([]*message.Message, error) {
 	status := n.Status()
 
 	return []*message.Message{
@@ -37,7 +37,7 @@ func (n *Node) handleStatusRequest(_ *message.Message) ([]*message.Message, erro
 	}, nil
 }
 
-func (n *Node) UpdateStatus(status Status) error {
+func (n *Service) UpdateStatus(status Status) error {
 	err := n.pub.Publish(
 		n.topics.SendStatus(),
 		message.NewMessage(watermill.NewUUID(), []byte(status)),

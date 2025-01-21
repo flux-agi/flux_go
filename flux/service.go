@@ -2,6 +2,7 @@ package flux
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,7 +11,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-type Node struct {
+type Service struct {
 	logger *slog.Logger
 
 	pub         message.Publisher
@@ -29,11 +30,11 @@ type Node struct {
 	state  *AtomicValue[[]byte]
 }
 
-func NewNode(
+func NewService(
 	serviceName string,
-	opts ...NodeOption,
-) *Node {
-	options := &NodeOptions{
+	opts ...ServiceOption,
+) *Service {
+	options := &ServiceOptions{
 		logger: nil,
 		pub:    nil,
 		sub:    nil,
@@ -44,7 +45,7 @@ func NewNode(
 		opt(options)
 	}
 
-	return &Node{
+	return &Service{
 		logger:      options.logger,
 		pub:         options.pub,
 		sub:         options.sub,
@@ -60,7 +61,7 @@ func NewNode(
 var ErrPredefinedPubSub = errors.New("pub and sub must be nil if you want to run app this way")
 
 //nolint:cyclop
-func (n *Node) Connect(ctx context.Context, opts ...ConnectOption) (*message.Router, error) {
+func (n *Service) Connect(ctx context.Context, opts ...ConnectOption) (*message.Router, error) {
 	if n.pub != nil || n.sub != nil {
 		return nil, ErrPredefinedPubSub
 	}
@@ -97,7 +98,7 @@ func (n *Node) Connect(ctx context.Context, opts ...ConnectOption) (*message.Rou
 
 	err = n.UpdateStatus(StatusConnected)
 	if err != nil {
-		return nil, fmt.Errorf("failed to update node status: %w", err)
+		return nil, fmt.Errorf("failed to update service status: %w", err)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, options.configTimeout)
@@ -117,7 +118,7 @@ func (n *Node) Connect(ctx context.Context, opts ...ConnectOption) (*message.Rou
 
 	err = n.UpdateStatus(StatusReady)
 	if err != nil {
-		return nil, fmt.Errorf("failed to update node status: %w", err)
+		return nil, fmt.Errorf("failed to update service status: %w", err)
 	}
 
 	n.RegisterStatusHandler(r)
@@ -126,7 +127,7 @@ func (n *Node) Connect(ctx context.Context, opts ...ConnectOption) (*message.Rou
 	return r, nil
 }
 
-func (n *Node) Close(ctx context.Context) {
+func (n *Service) Close(ctx context.Context) {
 	if n.pub != nil {
 		err := n.pub.Close()
 		if err != nil {
@@ -146,7 +147,7 @@ func (n *Node) Close(ctx context.Context) {
 	}
 }
 
-func (n *Node) Status() Status {
+func (n *Service) Status() Status {
 	status, ok := n.status.Get()
 	if !ok {
 		return StatusPaused
@@ -155,7 +156,7 @@ func (n *Node) Status() Status {
 	return status
 }
 
-func (n *Node) State() []byte {
+func (n *Service) State() []byte {
 	value, ok := n.state.Get()
 	if !ok {
 		return nil
@@ -164,10 +165,19 @@ func (n *Node) State() []byte {
 	return value
 }
 
-func (n *Node) Pub() message.Publisher {
+func (n *Service) Pub() message.Publisher {
 	return n.pub
 }
 
-func (n *Node) Sub() message.Subscriber {
+// PubData sends message to topic
+func (n *Service) PubData(topic string, payload any) error {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("could not marshal payload - %w", err)
+	}
+	return n.pub.Publish(topic, message.NewMessage(watermill.NewUUID(), data))
+}
+
+func (n *Service) Sub() message.Subscriber {
 	return n.sub
 }

@@ -6,35 +6,35 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-type NodeOptions struct {
+type ServiceOptions struct {
 	logger *slog.Logger
 	pub    message.Publisher
 	sub    message.Subscriber
 	state  []byte
 }
 
-type NodeOption func(*NodeOptions)
+type ServiceOption func(*ServiceOptions)
 
-func WithNodeLogger(logger *slog.Logger) NodeOption {
-	return func(o *NodeOptions) {
+func WithServiceLogger(logger *slog.Logger) ServiceOption {
+	return func(o *ServiceOptions) {
 		o.logger = logger
 	}
 }
 
-func WithNodePub(pub message.Publisher) NodeOption {
-	return func(o *NodeOptions) {
+func WithServicePub(pub message.Publisher) ServiceOption {
+	return func(o *ServiceOptions) {
 		o.pub = pub
 	}
 }
 
-func WithNodeSub(sub message.Subscriber) NodeOption {
-	return func(o *NodeOptions) {
+func WithServiceSub(sub message.Subscriber) ServiceOption {
+	return func(o *ServiceOptions) {
 		o.sub = sub
 	}
 }
 
-func WithNodeState(state []byte) NodeOption {
-	return func(o *NodeOptions) {
+func WithServiceState(state []byte) ServiceOption {
+	return func(o *ServiceOptions) {
 		o.state = state
 	}
 }

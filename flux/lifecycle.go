@@ -17,7 +17,7 @@ type (
 	}
 )
 
-func (n *Node) OnTick(ctx context.Context, r *message.Router, handler TickHandler) {
+func (n *Service) OnTick(ctx context.Context, r *message.Router, handler TickHandler) {
 	settings := make(chan TickSettings)
 
 	go func() {
@@ -68,7 +68,7 @@ func (n *Node) OnTick(ctx context.Context, r *message.Router, handler TickHandle
 	)
 }
 
-func (n *Node) OnRestart(r *message.Router, handler message.NoPublishHandlerFunc) {
+func (n *Service) OnRestart(r *message.Router, handler message.NoPublishHandlerFunc) {
 	r.AddNoPublisherHandler(
 		"flux.on_restart",
 		n.topics.Restart(),
@@ -92,7 +92,7 @@ func (n *Node) OnRestart(r *message.Router, handler message.NoPublishHandlerFunc
 	)
 }
 
-func (n *Node) OnError(r *message.Router, handler message.NoPublishHandlerFunc) {
+func (n *Service) OnError(r *message.Router, handler message.NoPublishHandlerFunc) {
 	r.AddNoPublisherHandler(
 		"flux.on_error",
 		n.topics.Errors(),
@@ -101,7 +101,7 @@ func (n *Node) OnError(r *message.Router, handler message.NoPublishHandlerFunc) 
 	)
 }
 
-func (n *Node) OnStart(r *message.Router, handler message.NoPublishHandlerFunc) {
+func (n *Service) OnStart(r *message.Router, handler message.NoPublishHandlerFunc) {
 	r.AddNoPublisherHandler(
 		"flux.on_start",
 		n.topics.Start(),
@@ -110,7 +110,7 @@ func (n *Node) OnStart(r *message.Router, handler message.NoPublishHandlerFunc) 
 	)
 }
 
-func (n *Node) OnStop(r *message.Router, handler message.NoPublishHandlerFunc) {
+func (n *Service) OnStop(r *message.Router, handler message.NoPublishHandlerFunc) {
 	r.AddNoPublisherHandler(
 		"flux.on_stop",
 		n.topics.Stop(),
@@ -119,7 +119,7 @@ func (n *Node) OnStop(r *message.Router, handler message.NoPublishHandlerFunc) {
 	)
 }
 
-func (n *Node) handlerWithStatusUpdate(
+func (n *Service) handlerWithStatusUpdate(
 	handler message.NoPublishHandlerFunc,
 	status Status,
 ) message.NoPublishHandlerFunc {
@@ -137,10 +137,10 @@ func (n *Node) handlerWithStatusUpdate(
 	}
 }
 
-func (n *Node) OnConnect(handler func() error) {
+func (n *Service) OnConnect(handler func() error) {
 	n.onConnect = handler
 }
 
-func (n *Node) OnReady(handler func([]byte, *message.Router, message.Publisher, message.Subscriber) error) {
+func (n *Service) OnReady(handler func([]byte, *message.Router, message.Publisher, message.Subscriber) error) {
 	n.onReady = handler
 }
