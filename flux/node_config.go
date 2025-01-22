@@ -30,18 +30,39 @@ type TickSettings struct {
 	Delay      time.Duration `json:"delay,omitempty"`
 }
 
+// NodesPort is a map of node ports by node alias
+type NodesPort map[string]NodePort
+
+// NodesPortByAlias returns node ports by alias
+func (n *NodesConfig[T]) NodesPortByAlias(alias string) (NodesPort, error) {
+	var ports NodesPort
+	for _, node := range *n {
+		for _, port := range node.InputPorts {
+			if strings.EqualFold(port.Alias, alias) {
+				ports[node.Alias] = port
+			}
+		}
+	}
+
+	if len(ports) == 0 {
+		return nil, fmt.Errorf("port with alias %s not found", alias)
+	}
+
+	return ports, nil
+}
+
 // GetTickSettingsByAlias returns tick settings by alias
-func (c *NodesConfig[T]) GetTickSettingsByAlias() map[string]TickSettings {
+func (n *NodesConfig[T]) GetTickSettingsByAlias() map[string]TickSettings {
 	settings := map[string]TickSettings{}
-	for _, n := range *c {
+	for _, n := range *n {
 		settings[n.Alias] = *n.Timer
 	}
 	return settings
 }
 
 // GetNodeByAlias returns node by alias
-func (c *NodesConfig[T]) GetNodeByAlias(alias string) (*NodeConfig[T], error) {
-	for _, node := range *c {
+func (n *NodesConfig[T]) GetNodeByAlias(alias string) (*NodeConfig[T], error) {
+	for _, node := range *n {
 		if strings.EqualFold(node.Alias, alias) {
 			return &node, nil
 		}
@@ -49,8 +70,8 @@ func (c *NodesConfig[T]) GetNodeByAlias(alias string) (*NodeConfig[T], error) {
 	return nil, fmt.Errorf("node with alias %s not found", alias)
 }
 
-// GetInputByAlias returns input port by alias
-func (c *NodeConfig[T]) GetInputByAlias(alias string) (string, error) {
+// InputPortByAlias returns input port by alias
+func (c *NodeConfig[T]) InputPortByAlias(alias string) (string, error) {
 	for _, port := range c.InputPorts {
 		if strings.EqualFold(port.Alias, alias) {
 			return port.Topic, nil
@@ -59,8 +80,8 @@ func (c *NodeConfig[T]) GetInputByAlias(alias string) (string, error) {
 	return "", fmt.Errorf("input port with alias %s not found", alias)
 }
 
-// GetOutputByAlias returns output port by alias
-func (c *NodeConfig[T]) GetOutputByAlias(alias string) (string, error) {
+// OutputPortByAlias returns output port by alias
+func (c *NodeConfig[T]) OutputPortByAlias(alias string) (string, error) {
 	for _, port := range c.OutputPorts {
 		if strings.EqualFold(port.Alias, alias) {
 			return port.Topic, nil

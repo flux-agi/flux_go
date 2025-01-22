@@ -11,11 +11,14 @@ import (
 type (
 	GlobalTickHandler = func(deltaTime time.Duration, timestamp time.Time)
 	LocalTickHandler  = func(nodeAlias string, deltaTime time.Duration, timestamp time.Time)
+	PortHandler       = func(nodeAlias string, timestamp time.Time, payload []byte)
 )
 
 func (n *Service) OnGlobalTick(ctx context.Context, r *message.Router, handler GlobalTickHandler) {
 	tick := make(chan struct{})
 	go func() {
+		defer close(tick)
+
 		lastTick := time.Now()
 		for {
 			select {
@@ -137,4 +140,47 @@ func (n *Service) OnConnect(handler func() error) {
 
 func (n *Service) OnReady(handler func([]byte, *message.Router, message.Publisher, message.Subscriber) error) {
 	n.onReady = handler
+}
+
+func (n *Service) OnPort(ctx context.Context, ports NodesPort, r *message.Router, handler PortHandler) error {
+	type StreamItem struct {
+		Timestamp time.Time
+		NodeAlias string
+		Payload   []byte
+	}
+
+	stream := make(chan StreamItem, len(ports)*3)
+
+	for nodeAlias, port := range ports {
+		r.AddNoPublisherHandler(
+			fmt.Sprintf("flux.on_port.%s", nodeAlias),
+			port.Topic,
+			n.sub,
+			func(msg *message.Message) error {
+				stream <- StreamItem{
+					Timestamp: time.Now(),
+					NodeAlias: nodeAlias,
+					Payload:   msg.Payload,
+				}
+				msg.Ack()
+				return nil
+			},
+		)
+	}
+
+	go func() {
+		defer close(stream)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+
+			case msg := <-stream:
+				handler(msg.NodeAlias, msg.Timestamp, msg.Payload)
+			}
+		}
+	}()
+
+	return nil
 }

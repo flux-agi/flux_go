@@ -169,6 +169,25 @@ func (n *Service) Pub() message.Publisher {
 	return n.pub
 }
 
+func (n *Service) PubToPort(cfg NodesConfig[any], nodeAlias, portName string, payload any) error {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("could not marshal payload - %w", err)
+	}
+
+	node, err := cfg.GetNodeByAlias(nodeAlias)
+	if err != nil {
+		return fmt.Errorf("could not get node by alias - %w", err)
+	}
+
+	nodePort, err := node.OutputPortByAlias(portName)
+	if err != nil {
+		return fmt.Errorf("could not get node portName by alias - %w", err)
+	}
+
+	return n.pub.Publish(nodePort, message.NewMessage(watermill.NewUUID(), data))
+}
+
 // PubData sends message to topic
 func (n *Service) PubData(topic string, payload any) error {
 	data, err := json.Marshal(payload)
