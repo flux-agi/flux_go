@@ -43,7 +43,7 @@ func Test_IsDevelopmentMode(t *testing.T) {
 	manager := fluxtest.NewFakeManager(pubSub, pubSub, map[string]any{
 		serviceName: config,
 	})
-	node := flux.NewNode(serviceName, flux.WithNodePub(pub), flux.WithNodeSub(sub))
+	node := flux.NewService(serviceName, flux.WithServicePub(pub), flux.WithServiceSub(sub))
 	t.Cleanup(func() {
 		node.Close(ctx)
 	})

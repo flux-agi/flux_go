@@ -2,7 +2,6 @@ package flux
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -10,65 +9,63 @@ import (
 )
 
 type (
-	TickHandler  = func(deltaTime time.Duration, timestamp time.Time)
-	TickSettings struct {
-		IsInfinity bool          `json:"is_infinity"`
-		Delay      time.Duration `json:"delay"`
-	}
+	GlobalTickHandler = func(deltaTime time.Duration, timestamp time.Time)
+	LocalTickHandler  = func(nodeAlias string, deltaTime time.Duration, timestamp time.Time)
+	PortHandler       = func(nodeAlias string, timestamp time.Time, payload []byte)
 )
 
-func (n *Node) OnTick(ctx context.Context, r *message.Router, handler TickHandler) {
-	settings := make(chan TickSettings)
-
+func (n *Service) OnGlobalTick(ctx context.Context, r *message.Router, handler GlobalTickHandler) {
+	tick := make(chan struct{})
 	go func() {
-		var (
-			data  TickSettings
-			timer = time.NewTimer(0)
-		)
-		defer timer.Stop()
+		defer close(tick)
 
-		resetTimer := func() {
-			if data.IsInfinity {
-				timer.Reset(0)
-				return
-			}
-			timer.Reset(data.Delay)
-		}
-
+		lastTick := time.Now()
 		for {
 			select {
 			case <-ctx.Done():
 				return
 
-			case d := <-settings:
-				data = d
-				resetTimer()
-
-			case <-timer.C:
-				handler(data.Delay, time.Now())
-				resetTimer()
+			case <-tick:
+				handler(lastTick.Sub(time.Now()), time.Now())
+				lastTick = time.Now()
 			}
 		}
 	}()
 
 	r.AddNoPublisherHandler(
-		"flux.tick",
-		n.topics.Tick(),
+		"flux.global_tick",
+		n.topics.GlobalTick(),
 		n.sub,
 		func(msg *message.Message) error {
-			var payload TickSettings
-			if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-				return fmt.Errorf("flux: failed to unmarshal tick payload: %w", err)
-			}
-
-			settings <- payload
-
+			tick <- struct{}{}
 			return nil
 		},
 	)
 }
 
-func (n *Node) OnRestart(r *message.Router, handler message.NoPublishHandlerFunc) {
+func (n *Service) OnLocalTick(ctx context.Context, cfg NodesConfig[any], handler LocalTickHandler) {
+	for _, node := range cfg {
+		go func() {
+			lastTick := time.Now()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+
+				default:
+					handler(node.Alias, lastTick.Sub(time.Now()), time.Now())
+					lastTick = time.Now()
+
+					if !node.Timer.IsInfinity {
+						time.Sleep(node.Timer.Delay)
+					}
+				}
+			}
+		}()
+	}
+}
+
+func (n *Service) OnRestart(r *message.Router, handler message.NoPublishHandlerFunc) {
 	r.AddNoPublisherHandler(
 		"flux.on_restart",
 		n.topics.Restart(),
@@ -92,7 +89,7 @@ func (n *Node) OnRestart(r *message.Router, handler message.NoPublishHandlerFunc
 	)
 }
 
-func (n *Node) OnError(r *message.Router, handler message.NoPublishHandlerFunc) {
+func (n *Service) OnError(r *message.Router, handler message.NoPublishHandlerFunc) {
 	r.AddNoPublisherHandler(
 		"flux.on_error",
 		n.topics.Errors(),
@@ -101,7 +98,7 @@ func (n *Node) OnError(r *message.Router, handler message.NoPublishHandlerFunc) 
 	)
 }
 
-func (n *Node) OnStart(r *message.Router, handler message.NoPublishHandlerFunc) {
+func (n *Service) OnStart(r *message.Router, handler message.NoPublishHandlerFunc) {
 	r.AddNoPublisherHandler(
 		"flux.on_start",
 		n.topics.Start(),
@@ -110,7 +107,7 @@ func (n *Node) OnStart(r *message.Router, handler message.NoPublishHandlerFunc) 
 	)
 }
 
-func (n *Node) OnStop(r *message.Router, handler message.NoPublishHandlerFunc) {
+func (n *Service) OnStop(r *message.Router, handler message.NoPublishHandlerFunc) {
 	r.AddNoPublisherHandler(
 		"flux.on_stop",
 		n.topics.Stop(),
@@ -119,7 +116,7 @@ func (n *Node) OnStop(r *message.Router, handler message.NoPublishHandlerFunc) {
 	)
 }
 
-func (n *Node) handlerWithStatusUpdate(
+func (n *Service) handlerWithStatusUpdate(
 	handler message.NoPublishHandlerFunc,
 	status Status,
 ) message.NoPublishHandlerFunc {
@@ -137,10 +134,53 @@ func (n *Node) handlerWithStatusUpdate(
 	}
 }
 
-func (n *Node) OnConnect(handler func() error) {
+func (n *Service) OnConnect(handler func() error) {
 	n.onConnect = handler
 }
 
-func (n *Node) OnReady(handler func([]byte, *message.Router, message.Publisher, message.Subscriber) error) {
+func (n *Service) OnReady(handler func([]byte, *message.Router, message.Publisher, message.Subscriber) error) {
 	n.onReady = handler
+}
+
+func (n *Service) OnPort(ctx context.Context, ports NodesPort, r *message.Router, handler PortHandler) error {
+	type StreamItem struct {
+		Timestamp time.Time
+		NodeAlias string
+		Payload   []byte
+	}
+
+	stream := make(chan StreamItem, len(ports)*3)
+
+	for nodeAlias, port := range ports {
+		r.AddNoPublisherHandler(
+			fmt.Sprintf("flux.on_port.%s", nodeAlias),
+			port.Topic,
+			n.sub,
+			func(msg *message.Message) error {
+				stream <- StreamItem{
+					Timestamp: time.Now(),
+					NodeAlias: nodeAlias,
+					Payload:   msg.Payload,
+				}
+				msg.Ack()
+				return nil
+			},
+		)
+	}
+
+	go func() {
+		defer close(stream)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+
+			case msg := <-stream:
+				handler(msg.NodeAlias, msg.Timestamp, msg.Payload)
+			}
+		}
+	}()
+
+	return nil
 }
