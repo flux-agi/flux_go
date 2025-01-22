@@ -8,7 +8,10 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-type GlobalTickHandler = func(deltaTime time.Duration, timestamp time.Time)
+type (
+	GlobalTickHandler = func(deltaTime time.Duration, timestamp time.Time)
+	LocalTickHandler  = func(nodeAlias string, deltaTime time.Duration, timestamp time.Time)
+)
 
 func (n *Service) OnGlobalTick(ctx context.Context, r *message.Router, handler GlobalTickHandler) {
 	tick := make(chan struct{})
@@ -35,6 +38,28 @@ func (n *Service) OnGlobalTick(ctx context.Context, r *message.Router, handler G
 			return nil
 		},
 	)
+}
+
+func (n *Service) OnLocalTick(ctx context.Context, cfg NodesConfig[any], handler LocalTickHandler) {
+	for _, node := range cfg {
+		go func() {
+			lastTick := time.Now()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+
+				default:
+					handler(node.Alias, lastTick.Sub(time.Now()), time.Now())
+					lastTick = time.Now()
+
+					if !node.Timer.IsInfinity {
+						time.Sleep(node.Timer.Delay)
+					}
+				}
+			}
+		}()
+	}
 }
 
 func (n *Service) OnRestart(r *message.Router, handler message.NoPublishHandlerFunc) {

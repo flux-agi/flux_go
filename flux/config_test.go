@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/signal"
 	"testing"
-	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
@@ -59,7 +58,7 @@ func TestNode_GetConfig(t *testing.T) {
 	t.Cleanup(stop)
 
 	nodesCfg, err := flux.GetConfig[string](ctx, service)
-	t.Logf("serviceConfig: %s", nodesCfg)
+	t.Logf("serviceConfig: %v", nodesCfg)
 
 	require.NoError(t, err)
 	assert.Equal(t, internalConfig, nodesCfg[0].Config)

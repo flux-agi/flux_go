@@ -32,6 +32,15 @@ type (
 	}
 )
 
+// GetTickSettingsByAlias returns tick settings by alias
+func (c *NodesConfig[T]) GetTickSettingsByAlias() map[string]TickSettings {
+	settings := map[string]TickSettings{}
+	for _, n := range *c {
+		settings[n.Alias] = *n.Timer
+	}
+	return settings
+}
+
 // GetNodeByAlias returns node by alias
 func (c *NodesConfig[T]) GetNodeByAlias(alias string) (*NodeConfig[T], error) {
 	for _, node := range *c {
