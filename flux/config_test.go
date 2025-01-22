@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"testing"
+	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
@@ -51,13 +52,13 @@ func TestNode_GetConfig(t *testing.T) {
 	manager := fluxtest.NewFakeManager(pubSub, pubSub, map[string]any{
 		serviceName: serviceConfig,
 	})
-	node := flux.NewService(serviceName, flux.WithServicePub(pub), flux.WithServiceSub(sub))
-	t.Cleanup(func() { node.Close(ctx) })
+	service := flux.NewService(serviceName, flux.WithServicePub(pub), flux.WithServiceSub(sub))
+	t.Cleanup(func() { service.Close(ctx) })
 
 	stop := manager.Run(ctx)
 	t.Cleanup(stop)
 
-	nodesCfg, err := flux.GetConfig[string](ctx, node)
+	nodesCfg, err := flux.GetConfig[string](ctx, service)
 	t.Logf("serviceConfig: %s", nodesCfg)
 
 	require.NoError(t, err)

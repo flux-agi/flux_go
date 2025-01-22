@@ -3,24 +3,34 @@ package flux
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
-// NodesConfig is a slice of NodeConfig
-type NodesConfig[T any] []NodeConfig[T]
+type (
+	// NodesConfig is a slice of NodeConfig
+	NodesConfig[T any] []NodeConfig[T]
 
-// NodeConfig is a node config
-type NodeConfig[T any] struct {
-	Alias       string     `json:"alias,omitempty"`
-	InputPorts  []NodePort `json:"input_ports,omitempty"`
-	OutputPorts []NodePort `json:"output_ports,omitempty"`
-	Config      T          `json:"config,omitempty"`
-}
+	// NodeConfig is a node config
+	NodeConfig[T any] struct {
+		Alias       string        `json:"alias,omitempty"`
+		InputPorts  []NodePort    `json:"input_ports,omitempty"`
+		OutputPorts []NodePort    `json:"output_ports,omitempty"`
+		Timer       *TickSettings `json:"timer,omitempty"`
+		Config      T             `json:"config,omitempty"`
+	}
 
-// NodePort is a node output/input port for communication
-type NodePort struct {
-	Alias string `json:"alias,omitempty"`
-	Topic string `json:"topic,omitempty"`
-}
+	// NodePort is a node output/input port for communication
+	NodePort struct {
+		Alias string `json:"alias,omitempty"`
+		Topic string `json:"topic,omitempty"`
+	}
+
+	// TickSettings is a local tick settings of node
+	TickSettings struct {
+		IsInfinity bool          `json:"is_infinity,omitempty"`
+		Delay      time.Duration `json:"delay,omitempty"`
+	}
+)
 
 // GetNodeByAlias returns node by alias
 func (c *NodesConfig[T]) GetNodeByAlias(alias string) (*NodeConfig[T], error) {

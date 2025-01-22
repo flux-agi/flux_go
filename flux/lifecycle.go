@@ -2,67 +2,36 @@ package flux
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-type (
-	TickHandler  = func(deltaTime time.Duration, timestamp time.Time)
-	TickSettings struct {
-		IsInfinity bool          `json:"is_infinity"`
-		Delay      time.Duration `json:"delay"`
-	}
-)
+type GlobalTickHandler = func(deltaTime time.Duration, timestamp time.Time)
 
-func (n *Service) OnTick(ctx context.Context, r *message.Router, handler TickHandler) {
-	settings := make(chan TickSettings)
-
+func (n *Service) OnGlobalTick(ctx context.Context, r *message.Router, handler GlobalTickHandler) {
+	tick := make(chan struct{})
 	go func() {
-		var (
-			data  TickSettings
-			timer = time.NewTimer(0)
-		)
-		defer timer.Stop()
-
-		resetTimer := func() {
-			if data.IsInfinity {
-				timer.Reset(0)
-				return
-			}
-			timer.Reset(data.Delay)
-		}
-
+		lastTick := time.Now()
 		for {
 			select {
 			case <-ctx.Done():
 				return
 
-			case d := <-settings:
-				data = d
-				resetTimer()
-
-			case <-timer.C:
-				handler(data.Delay, time.Now())
-				resetTimer()
+			case <-tick:
+				handler(lastTick.Sub(time.Now()), time.Now())
+				lastTick = time.Now()
 			}
 		}
 	}()
 
 	r.AddNoPublisherHandler(
-		"flux.tick",
-		n.topics.Tick(),
+		"flux.global_tick",
+		n.topics.GlobalTick(),
 		n.sub,
 		func(msg *message.Message) error {
-			var payload TickSettings
-			if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-				return fmt.Errorf("flux: failed to unmarshal tick payload: %w", err)
-			}
-
-			settings <- payload
-
+			tick <- struct{}{}
 			return nil
 		},
 	)
