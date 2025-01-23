@@ -65,4 +65,15 @@ func InitRouter(
 }
 ```
 
+## Subscribe to node port
+```go
+nodesCfg, _ := flux.GetConfig[string](ctx, service)
+router := flux.DefaultRouterFactory(logger)
+
+ports, _ := nodesCfg.NodesPortByAlias("port_name")
+service.OnPort(ctx, ports, router, func(nodeAlias string, timestamp time.Time, payload []byte) {
+
+})
+```
+
 See nodes implementations at organisation repositories for more examples.

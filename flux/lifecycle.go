@@ -72,6 +72,7 @@ func (n *Service) OnTick(ctx context.Context, r *message.Router, nodes NodesConf
 		)
 	}
 }
+
 func (n *Service) OnRestart(r *message.Router, handler message.NoPublishHandlerFunc) {
 	r.AddNoPublisherHandler(
 		"flux.on_restart",
