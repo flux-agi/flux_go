@@ -26,8 +26,8 @@ type NodePort struct {
 
 // TickSettings is a local tick settings of node
 type TickSettings struct {
-	IsInfinity bool          `json:"is_infinity,omitempty"`
-	Delay      time.Duration `json:"delay,omitempty"`
+	IsGlobal bool          `json:"is_global,omitempty"`
+	Delay    time.Duration `json:"delay,omitempty"`
 }
 
 // NodesPort is a map of node ports by node alias

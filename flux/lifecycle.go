@@ -9,62 +9,69 @@ import (
 )
 
 type (
-	GlobalTickHandler = func(deltaTime time.Duration, timestamp time.Time)
-	LocalTickHandler  = func(nodeAlias string, deltaTime time.Duration, timestamp time.Time)
-	PortHandler       = func(nodeAlias string, timestamp time.Time, payload []byte)
+	TickHandler = func(nodeAlias string, deltaTime time.Duration, timestamp time.Time)
+	PortHandler = func(nodeAlias string, timestamp time.Time, payload []byte)
 )
 
-func (n *Service) OnGlobalTick(ctx context.Context, r *message.Router, handler GlobalTickHandler) {
-	tick := make(chan struct{})
-	go func() {
-		defer close(tick)
-
-		lastTick := time.Now()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-
-			case <-tick:
-				handler(lastTick.Sub(time.Now()), time.Now())
-				lastTick = time.Now()
-			}
-		}
-	}()
-
-	r.AddNoPublisherHandler(
-		"flux.global_tick",
-		n.topics.GlobalTick(),
-		n.sub,
-		func(msg *message.Message) error {
-			tick <- struct{}{}
-			return nil
-		},
+func (n *Service) OnTick(ctx context.Context, r *message.Router, nodes NodesConfig[any], handler TickHandler) {
+	var (
+		tick          = make(chan struct{})
+		hasGlobalTick = false
 	)
-}
 
-func (n *Service) OnLocalTick(ctx context.Context, cfg NodesConfig[any], handler LocalTickHandler) {
-	for _, node := range cfg {
-		go func() {
-			lastTick := time.Now()
-			for {
-				select {
-				case <-ctx.Done():
-					return
+	for _, node := range nodes {
+		if node.Timer == nil {
+			continue
+		}
 
-				default:
-					handler(node.Alias, lastTick.Sub(time.Now()), time.Now())
-					lastTick = time.Now()
+		if node.Timer.IsGlobal {
+			hasGlobalTick = true
+			go func() {
+				defer close(tick)
 
-					if !node.Timer.IsInfinity {
+				lastTick := time.Now()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+
+					case <-tick:
+						handler(node.Alias, lastTick.Sub(time.Now()), time.Now())
+						lastTick = time.Now()
+					}
+				}
+			}()
+		} else {
+			go func() {
+				lastTick := time.Now()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+
+					default:
+						handler(node.Alias, lastTick.Sub(time.Now()), time.Now())
+						lastTick = time.Now()
+
 						time.Sleep(node.Timer.Delay)
 					}
 				}
-			}
-		}()
+			}()
+		}
+	}
+
+	if hasGlobalTick {
+		r.AddNoPublisherHandler(
+			"flux.global_tick",
+			n.topics.GlobalTick(),
+			n.sub,
+			func(msg *message.Message) error {
+				tick <- struct{}{}
+				return nil
+			},
+		)
 	}
 }
-
 func (n *Service) OnRestart(r *message.Router, handler message.NoPublishHandlerFunc) {
 	r.AddNoPublisherHandler(
 		"flux.on_restart",
@@ -183,4 +190,8 @@ func (n *Service) OnPort(ctx context.Context, ports NodesPort, r *message.Router
 	}()
 
 	return nil
+}
+
+func (n *Service) OnShutdown() {
+	n.sub.Close()
 }
