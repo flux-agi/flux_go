@@ -7,18 +7,18 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-type Status string
+type ServiceStatus string
 
 const (
-	StatusInitializing Status = "initializing"
-	StatusConnected    Status = "CONNECTED"
-	StatusReady        Status = "READY"
-	StatusActive       Status = "ACTIVE"
-	StatusPaused       Status = "PAUSED"
-	StatusError        Status = "ERROR"
+	ServiceStatusInitializing ServiceStatus = "initializing"
+	ServiceStatusConnected    ServiceStatus = "CONNECTED"
+	ServiceStatusReady        ServiceStatus = "READY"
+	ServiceStatusActive       ServiceStatus = "ACTIVE"
+	ServiceStatusPaused       ServiceStatus = "PAUSED"
+	ServiceStatusError        ServiceStatus = "ERROR"
 )
 
-func (n *Service) RegisterStatusHandler(r *message.Router) {
+func (n *Service[T]) RegisterStatusHandler(r *message.Router) {
 	r.AddHandler(
 		"flux.request_status",
 		n.topics.RequestStatus(),
@@ -29,7 +29,7 @@ func (n *Service) RegisterStatusHandler(r *message.Router) {
 	)
 }
 
-func (n *Service) handleStatusRequest(_ *message.Message) ([]*message.Message, error) {
+func (n *Service[T]) handleStatusRequest(_ *message.Message) ([]*message.Message, error) {
 	status := n.Status()
 
 	return []*message.Message{
@@ -37,7 +37,7 @@ func (n *Service) handleStatusRequest(_ *message.Message) ([]*message.Message, e
 	}, nil
 }
 
-func (n *Service) UpdateStatus(status Status) error {
+func (n *Service[T]) UpdateStatus(status ServiceStatus) error {
 	err := n.pub.Publish(
 		n.topics.SendStatus(),
 		message.NewMessage(watermill.NewUUID(), []byte(status)),

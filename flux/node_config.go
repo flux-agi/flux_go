@@ -3,7 +3,6 @@ package flux
 import (
 	"fmt"
 	"strings"
-	"time"
 )
 
 // NodesConfig is a slice of NodeConfig
@@ -24,10 +23,18 @@ type NodePort struct {
 	Topic string `json:"topic,omitempty"`
 }
 
+type TimerType string
+
+const (
+	TimerTypeGlobal TimerType = "GLOBAL"
+	TimerTypeLocal  TimerType = "LOCAL"
+	TimerTypeNone   TimerType = "NONE"
+)
+
 // TickSettings is a local tick settings of node
 type TickSettings struct {
-	IsGlobal bool          `json:"is_global,omitempty"`
-	Delay    time.Duration `json:"delay,omitempty"`
+	Type     TimerType `json:"type,omitempty"`
+	Interval int       `json:"intervalMs,omitempty"`
 }
 
 // NodesPort is a map of node ports by node alias

@@ -2,7 +2,6 @@ package flux
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -11,29 +10,32 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-type Service struct {
-	logger *slog.Logger
+var ErrPredefinedPubSub = errors.New("pub and sub must be nil if you want to run app this way")
 
-	pub         message.Publisher
-	sub         message.Subscriber
+type Service[T any] struct {
 	serviceName string
+	logger      *slog.Logger
 
-	// onConnect func will be called in Connect method after pub & sub creation
+	watermillLogger watermill.LoggerAdapter
+	pub             message.Publisher
+	sub             message.Subscriber
+
+	// onConnect func will be called in Run method after pub & sub creation
 	onConnect func() error
 
-	// onReady func will be called in Connect method after getting config
+	// onReady func will be called in Run method after getting config
 	// it accepts raw payload from message.
-	onReady func(cfg []byte, r *message.Router, pub message.Publisher, sub message.Subscriber) error
+	onReady func(cfg NodesConfig[T], r *message.Router, pub message.Publisher, sub message.Subscriber) error
 
-	topics *Topics
-	status *AtomicValue[Status]
+	topics *ServiceTopics
+	status *AtomicValue[ServiceStatus]
 	state  *AtomicValue[[]byte]
+
+	nodes        []Node[T]
+	nodeHandlers NodeHandlers[T]
 }
 
-func NewService(
-	serviceName string,
-	opts ...ServiceOption,
-) *Service {
+func NewService[T any](serviceName string, opts ...ServiceOption) *Service[T] {
 	options := &ServiceOptions{
 		logger: nil,
 		pub:    nil,
@@ -45,7 +47,7 @@ func NewService(
 		opt(options)
 	}
 
-	return &Service{
+	return &Service[T]{
 		logger:      options.logger,
 		pub:         options.pub,
 		sub:         options.sub,
@@ -53,20 +55,19 @@ func NewService(
 		onConnect:   nil,
 		onReady:     nil,
 		topics:      NewTopics(serviceName),
-		status:      NewAtomicValue(StatusInitializing),
+		status:      NewAtomicValue(ServiceStatusInitializing),
 		state:       NewAtomicValue(options.state),
+		nodes:       make([]Node[T], 0),
 	}
 }
 
-var ErrPredefinedPubSub = errors.New("pub and sub must be nil if you want to run app this way")
-
 //nolint:cyclop
-func (n *Service) Connect(ctx context.Context, opts ...ConnectOption) (*message.Router, error) {
+func (n *Service[T]) Run(ctx context.Context, opts ...ConnectOption) (*message.Router, error) {
 	if n.pub != nil || n.sub != nil {
 		return nil, ErrPredefinedPubSub
 	}
 
-	options := &ConnectOptions{
+	options := &RunOptions{
 		watermillLogger: watermill.NopLogger{},
 		pubFactory:      DefaultPublisherFactory(DefaultNatsURL),
 		subFactory:      DefaultSubscriberFactory(DefaultNatsURL),
@@ -76,6 +77,8 @@ func (n *Service) Connect(ctx context.Context, opts ...ConnectOption) (*message.
 	for _, opt := range opts {
 		opt(options)
 	}
+
+	n.watermillLogger = options.watermillLogger
 
 	var err error
 
@@ -96,7 +99,7 @@ func (n *Service) Connect(ctx context.Context, opts ...ConnectOption) (*message.
 		}
 	}
 
-	err = n.UpdateStatus(StatusConnected)
+	err = n.UpdateStatus(ServiceStatusConnected)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update service status: %w", err)
 	}
@@ -109,14 +112,18 @@ func (n *Service) Connect(ctx context.Context, opts ...ConnectOption) (*message.
 		return nil, err
 	}
 
+	if err := n.reloadNodes(ctx, cfg); err != nil {
+		return nil, fmt.Errorf("failed to reload nodes: %w", err)
+	}
+
 	r := options.routerFactory(options.watermillLogger)
 
-	err = n.onReady(cfg, r, n.pub, n.sub)
+	err = n.onReady(*cfg, r, n.pub, n.sub)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
-	err = n.UpdateStatus(StatusReady)
+	err = n.UpdateStatus(ServiceStatusReady)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update service status: %w", err)
 	}
@@ -127,7 +134,7 @@ func (n *Service) Connect(ctx context.Context, opts ...ConnectOption) (*message.
 	return r, nil
 }
 
-func (n *Service) Close(ctx context.Context) {
+func (n *Service[T]) Close(ctx context.Context) {
 	if n.pub != nil {
 		err := n.pub.Close()
 		if err != nil {
@@ -147,16 +154,16 @@ func (n *Service) Close(ctx context.Context) {
 	}
 }
 
-func (n *Service) Status() Status {
+func (n *Service[T]) Status() ServiceStatus {
 	status, ok := n.status.Get()
 	if !ok {
-		return StatusPaused
+		return ServiceStatusPaused
 	}
 
 	return status
 }
 
-func (n *Service) State() []byte {
+func (n *Service[T]) State() []byte {
 	value, ok := n.state.Get()
 	if !ok {
 		return nil
@@ -165,38 +172,30 @@ func (n *Service) State() []byte {
 	return value
 }
 
-func (n *Service) Pub() message.Publisher {
-	return n.pub
-}
+func (n *Service[T]) Pub() message.Publisher { return n.pub }
 
-func (n *Service) PubToPort(cfg NodesConfig[any], nodeAlias, portName string, payload any) error {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("could not marshal payload - %w", err)
+func (n *Service[T]) Sub() message.Subscriber { return n.sub }
+
+func (n *Service[T]) reloadNodes(ctx context.Context, nodes *NodesConfig[T]) error {
+	for _, node := range n.nodes {
+		if err := node.Close(); err != nil {
+			n.logger.Error("failed to close node", slog.String("err", err.Error()))
+		}
 	}
 
-	node, err := cfg.GetNodeByAlias(nodeAlias)
-	if err != nil {
-		return fmt.Errorf("could not get node by alias - %w", err)
+	resultNodes := make([]Node[T], 0)
+	for _, nodeCfg := range *nodes {
+		node := NewNode[T](
+			ctx,
+			n.watermillLogger,
+			n.sub,
+			n.pub,
+			nodeCfg,
+		)
+		resultNodes = append(resultNodes, *node)
 	}
 
-	nodePort, err := node.OutputPortByAlias(portName)
-	if err != nil {
-		return fmt.Errorf("could not get node portName by alias - %w", err)
-	}
+	n.nodes = resultNodes
 
-	return n.pub.Publish(nodePort, message.NewMessage(watermill.NewUUID(), data))
-}
-
-// PubData sends message to topic
-func (n *Service) PubData(topic string, payload any) error {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("could not marshal payload - %w", err)
-	}
-	return n.pub.Publish(topic, message.NewMessage(watermill.NewUUID(), data))
-}
-
-func (n *Service) Sub() message.Subscriber {
-	return n.sub
+	return nil
 }

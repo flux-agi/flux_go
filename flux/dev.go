@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func (n *Service) EnableDevMode() error {
+func (n *Service[T]) EnableDevMode() error {
 	var (
 		filename = "dev_mode.ini"
 		id       string

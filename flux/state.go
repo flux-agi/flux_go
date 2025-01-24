@@ -8,7 +8,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-func (n *Service) RegisterStateHandler(r *message.Router) {
+func (n *Service[T]) RegisterStateHandler(r *message.Router) {
 	r.AddHandler(
 		"flux.request_common_state",
 		n.topics.GetCommonState(),
@@ -19,7 +19,7 @@ func (n *Service) RegisterStateHandler(r *message.Router) {
 	)
 }
 
-func (n *Service) handleStateRequest(_ *message.Message) ([]*message.Message, error) {
+func (n *Service[T]) handleStateRequest(_ *message.Message) ([]*message.Message, error) {
 	state := n.State()
 
 	return []*message.Message{
@@ -27,7 +27,7 @@ func (n *Service) handleStateRequest(_ *message.Message) ([]*message.Message, er
 	}, nil
 }
 
-func (n *Service) SetState(value any) error {
+func (n *Service[T]) SetState(value any) error {
 	raw, err := json.Marshal(value)
 	if err != nil {
 		return fmt.Errorf("could not marshal state: %w", err)
