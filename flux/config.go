@@ -14,19 +14,19 @@ import (
 // It subscribes on /set_config topic and sends /get_config message to request config from manager.
 // It's a blocking function. Use context.WithTimeout to set waiting timeout. When the context will be canceled,
 // GetConfig will return context error.
-func (n *Service[T]) GetConfig(ctx context.Context) (*NodesConfig[T], error) {
+func (s *Service[T]) GetConfig(ctx context.Context) (*NodesConfig[T], error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	messages, err := n.sub.Subscribe(
+	messages, err := s.sub.Subscribe(
 		ctx,
-		n.topics.ResponseConfig(),
+		s.topics.ResponseConfig(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("could not subscribe to config: %w", err)
 	}
 
-	err = n.sendConfigRequest()
+	err = s.sendConfigRequest()
 	if err != nil {
 		return nil, fmt.Errorf("failed to register request config: %w", err)
 	}
@@ -47,10 +47,10 @@ func (n *Service[T]) GetConfig(ctx context.Context) (*NodesConfig[T], error) {
 	}
 }
 
-func (n *Service[T]) sendConfigRequest() error {
-	msg := message.NewMessage(watermill.NewUUID(), []byte(n.serviceName))
-	err := n.pub.Publish(
-		n.topics.RequestConfig(),
+func (s *Service[T]) sendConfigRequest() error {
+	msg := message.NewMessage(watermill.NewUUID(), []byte(s.serviceName))
+	err := s.pub.Publish(
+		s.topics.RequestConfig(),
 		msg,
 	)
 	if err != nil {

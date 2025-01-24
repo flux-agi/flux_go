@@ -1,19 +1,23 @@
 package flux
 
-func (n *Service[T]) OnNodeReady(handler func(cfg NodeConfig[T]) error) error {
-	n.nodeHandlers.OnReady(handler)
-	return nil
+func (s *Service[T]) OnNodeReady(handler func(cfg NodeConfig[T]) error) {
+	s.nodeHandlers.OnReady(handler)
 }
 
-func (n *Service[T]) OnNodeStart(handler NodeEventHandler) {
-	n.nodeHandlers.OnStart(handler)
+func (s *Service[T]) OnNodeStart(handler NodeEventHandler) {
+	s.nodeHandlers.OnStart(handler)
 }
 
-func (n *Service[T]) OnNodeStop(handler NodeEventHandler) {
-	n.nodeHandlers.OnStop(handler)
+func (s *Service[T]) OnNodeStop(handler NodeEventHandler) {
+	s.nodeHandlers.OnStop(handler)
 }
 
-func (n *Service[T]) OnNodeSubscribe(port string, handler func(node NodeConfig[T], payload []byte) error) error {
-	// todo: need implement
+func (s *Service[T]) OnNodeSubscribe(port string, handler func(node NodeConfig[T], payload []byte) error) error {
+	s.nodeHandlers.OnSubscribe(port, handler)
+	for _, node := range s.nodes {
+		if err := node.OnSubscribe(port, handler); err != nil {
+			return err
+		}
+	}
 	return nil
 }

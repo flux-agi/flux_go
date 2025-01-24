@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -17,7 +18,8 @@ type NodeHandlers[T any] struct {
 	onReadyHandler func(cfg NodeConfig[T]) error
 	onStartHandler NodeEventHandler
 	onStopHandler  NodeEventHandler
-	onSubscribe    []func(port string, handler func(node NodeConfig[T], payload []byte) error) error
+	onSubscribe    map[string]func(node NodeConfig[T], payload []byte) error
+	mu             sync.Mutex
 }
 
 func (n *NodeHandlers[T]) OnReady(handler func(cfg NodeConfig[T]) error) {
@@ -30,6 +32,22 @@ func (n *NodeHandlers[T]) OnStart(handler NodeEventHandler) {
 
 func (n *NodeHandlers[T]) OnStop(handler NodeEventHandler) {
 	n.onStopHandler = handler
+}
+
+func (n *NodeHandlers[T]) OnSubscribe(port string, handler func(node NodeConfig[T], payload []byte) error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.onSubscribe == nil {
+		n.onSubscribe = make(map[string]func(node NodeConfig[T], payload []byte) error)
+	}
+	n.onSubscribe[port] = handler
+}
+
+func (n *NodeHandlers[T]) GetSubscribeHandler(port string) (func(node NodeConfig[T], payload []byte) error, bool) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	handler, ok := n.onSubscribe[port]
+	return handler, ok
 }
 
 type Node[T any] struct {
@@ -59,20 +77,44 @@ func NewNode[T any](
 	}
 }
 
+func (n *Node[T]) RegisterHandlers(handlers *NodeHandlers[T]) error {
+	if handlers.onReadyHandler != nil {
+		if err := handlers.onReadyHandler(n.config); err != nil {
+			return fmt.Errorf("could not run ready handler: %w", err)
+		}
+	}
+
+	if handlers.onStartHandler != nil {
+		n.OnStart(handlers.onStartHandler)
+	}
+
+	if handlers.onStopHandler != nil {
+		n.OnStop(handlers.onStopHandler)
+	}
+
+	for port, handler := range handlers.onSubscribe {
+		if err := n.OnSubscribe(port, handler); err != nil {
+			return fmt.Errorf("could not register subscribe handler: %w", err)
+		}
+	}
+
+	return nil
+}
+
 func (n *Node[T]) OnReady(handler func(node NodeConfig[T]) error) error {
 	if err := handler(n.config); err != nil {
-		return err
+		return fmt.Errorf("could not run ready handler: %w", err)
 	}
 	return nil
 }
 
-func (n *Node[T]) OnStart(handler func() error) {
+func (n *Node[T]) OnStart(handler NodeEventHandler) {
 	n.router.AddNoPublisherHandler(
 		"flux.node.on_start."+n.config.Alias,
 		buildTopicNodeEvent(n.config.Alias, "start"),
 		n.sub,
 		func(msg *message.Message) error {
-			if err := handler(); err != nil {
+			if err := handler(n.config.Alias); err != nil {
 				return err
 			}
 			msg.Ack()
@@ -81,13 +123,13 @@ func (n *Node[T]) OnStart(handler func() error) {
 	)
 }
 
-func (n *Node[T]) OnStop(handler func() error) {
+func (n *Node[T]) OnStop(handler NodeEventHandler) {
 	n.router.AddNoPublisherHandler(
 		"flux.node.on_stop."+n.config.Alias,
 		buildTopicNodeEvent(n.config.Alias, "stop"),
 		n.sub,
 		func(msg *message.Message) error {
-			if err := handler(); err != nil {
+			if err := handler(n.config.Alias); err != nil {
 				return err
 			}
 			msg.Ack()

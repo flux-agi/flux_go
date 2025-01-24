@@ -18,35 +18,35 @@ const (
 	ServiceStatusError        ServiceStatus = "ERROR"
 )
 
-func (n *Service[T]) RegisterStatusHandler(r *message.Router) {
+func (s *Service[T]) RegisterStatusHandler(r *message.Router) {
 	r.AddHandler(
 		"flux.request_status",
-		n.topics.RequestStatus(),
-		n.sub,
-		n.topics.SendStatus(),
-		n.pub,
-		n.handleStatusRequest,
+		s.topics.RequestStatus(),
+		s.sub,
+		s.topics.SendStatus(),
+		s.pub,
+		s.handleStatusRequest,
 	)
 }
 
-func (n *Service[T]) handleStatusRequest(_ *message.Message) ([]*message.Message, error) {
-	status := n.Status()
+func (s *Service[T]) handleStatusRequest(_ *message.Message) ([]*message.Message, error) {
+	status := s.Status()
 
 	return []*message.Message{
 		message.NewMessage(watermill.NewUUID(), []byte(status)),
 	}, nil
 }
 
-func (n *Service[T]) UpdateStatus(status ServiceStatus) error {
-	err := n.pub.Publish(
-		n.topics.SendStatus(),
+func (s *Service[T]) UpdateStatus(status ServiceStatus) error {
+	err := s.pub.Publish(
+		s.topics.SendStatus(),
 		message.NewMessage(watermill.NewUUID(), []byte(status)),
 	)
 	if err != nil {
 		return fmt.Errorf("could not publish status message: %w", err)
 	}
 
-	n.status.Set(status)
+	s.status.Set(status)
 
 	return nil
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func (n *Service[T]) EnableDevMode() error {
+func (s *Service[T]) EnableDevMode() error {
 	var (
 		filename = "dev_mode.ini"
 		id       string
@@ -44,9 +44,9 @@ func (n *Service[T]) EnableDevMode() error {
 		id = string(openedFile)
 	}
 
-	msg := message.NewMessage(watermill.NewUUID(), []byte(n.serviceName))
-	publishErr := n.pub.Publish(
-		n.topics.PushDevelopmentMode(id),
+	msg := message.NewMessage(watermill.NewUUID(), []byte(s.serviceName))
+	publishErr := s.pub.Publish(
+		s.topics.PushDevelopmentMode(id),
 		msg,
 	)
 	if publishErr != nil {

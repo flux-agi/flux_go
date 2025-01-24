@@ -11,7 +11,7 @@ import (
 
 type TickHandler = func(nodeAlias string, deltaTime time.Duration, timestamp time.Time)
 
-func (n *Service[T]) OnServiceTick(ctx context.Context, r *message.Router, nodes NodesConfig[any], handler TickHandler) {
+func (s *Service[T]) OnServiceTick(ctx context.Context, r *message.Router, nodes NodesConfig[any], handler TickHandler) {
 	var (
 		tick          = make(chan struct{})
 		hasGlobalTick = false
@@ -64,8 +64,8 @@ func (n *Service[T]) OnServiceTick(ctx context.Context, r *message.Router, nodes
 	if hasGlobalTick {
 		r.AddNoPublisherHandler(
 			"flux.global_tick",
-			n.topics.GlobalTick(),
-			n.sub,
+			s.topics.GlobalTick(),
+			s.sub,
 			func(msg *message.Message) error {
 				tick <- struct{}{}
 				return nil
@@ -74,13 +74,13 @@ func (n *Service[T]) OnServiceTick(ctx context.Context, r *message.Router, nodes
 	}
 }
 
-func (n *Service[T]) OnServiceRestart(r *message.Router, handler message.NoPublishHandlerFunc) {
+func (s *Service[T]) OnServiceRestart(r *message.Router, handler message.NoPublishHandlerFunc) {
 	r.AddNoPublisherHandler(
 		"flux.on_restart",
-		n.topics.Restart(),
-		n.sub,
+		s.topics.Restart(),
+		s.sub,
 		func(msg *message.Message) error {
-			if err := n.UpdateStatus(ServiceStatusPaused); err != nil {
+			if err := s.UpdateStatus(ServiceStatusPaused); err != nil {
 				return fmt.Errorf("cannot update status before restart: %w", err)
 			}
 
@@ -89,7 +89,7 @@ func (n *Service[T]) OnServiceRestart(r *message.Router, handler message.NoPubli
 				return err
 			}
 
-			if err := n.UpdateStatus(ServiceStatusActive); err != nil {
+			if err := s.UpdateStatus(ServiceStatusActive); err != nil {
 				return fmt.Errorf("cannot update status after restart: %w", err)
 			}
 
@@ -98,34 +98,34 @@ func (n *Service[T]) OnServiceRestart(r *message.Router, handler message.NoPubli
 	)
 }
 
-func (n *Service[T]) OnServiceError(r *message.Router, handler message.NoPublishHandlerFunc) {
+func (s *Service[T]) OnServiceError(r *message.Router, handler message.NoPublishHandlerFunc) {
 	r.AddNoPublisherHandler(
 		"flux.on_error",
-		n.topics.Errors(),
-		n.sub,
+		s.topics.Errors(),
+		s.sub,
 		handler,
 	)
 }
 
-func (n *Service[T]) OnServiceStart(r *message.Router, handler message.NoPublishHandlerFunc) {
+func (s *Service[T]) OnServiceStart(r *message.Router, handler message.NoPublishHandlerFunc) {
 	r.AddNoPublisherHandler(
 		"flux.on_start",
-		n.topics.Start(),
-		n.sub,
-		n.handlerWithStatusUpdate(handler, ServiceStatusActive),
+		s.topics.Start(),
+		s.sub,
+		s.handlerWithStatusUpdate(handler, ServiceStatusActive),
 	)
 }
 
-func (n *Service[T]) OnServiceStop(r *message.Router, handler message.NoPublishHandlerFunc) {
+func (s *Service[T]) OnServiceStop(r *message.Router, handler message.NoPublishHandlerFunc) {
 	r.AddNoPublisherHandler(
 		"flux.on_stop",
-		n.topics.Stop(),
-		n.sub,
-		n.handlerWithStatusUpdate(handler, ServiceStatusPaused),
+		s.topics.Stop(),
+		s.sub,
+		s.handlerWithStatusUpdate(handler, ServiceStatusPaused),
 	)
 }
 
-func (n *Service[T]) handlerWithStatusUpdate(
+func (s *Service[T]) handlerWithStatusUpdate(
 	handler message.NoPublishHandlerFunc,
 	status ServiceStatus,
 ) message.NoPublishHandlerFunc {
@@ -135,7 +135,7 @@ func (n *Service[T]) handlerWithStatusUpdate(
 			return fmt.Errorf("cannot handle message with status update: %w", err)
 		}
 
-		if err := n.UpdateStatus(status); err != nil {
+		if err := s.UpdateStatus(status); err != nil {
 			return fmt.Errorf("cannot update status after handler call: %w", err)
 		}
 
@@ -143,16 +143,16 @@ func (n *Service[T]) handlerWithStatusUpdate(
 	}
 }
 
-func (n *Service[T]) OnServiceConnect(handler func() error) {
-	n.onConnect = handler
+func (s *Service[T]) OnServiceConnect(handler func() error) {
+	s.onConnect = handler
 }
 
-func (n *Service[T]) OnServiceReady(handler func(NodesConfig[T], *message.Router, message.Publisher, message.Subscriber) error) {
-	n.onReady = handler
+func (s *Service[T]) OnServiceReady(handler func(NodesConfig[T], *message.Router, message.Publisher, message.Subscriber) error) {
+	s.onReady = handler
 }
 
-func (n *Service[T]) OnServiceShutdown() {
-	if err := n.sub.Close(); err != nil {
-		n.logger.Error("failed to close subscriber", slog.String("err", err.Error()))
+func (s *Service[T]) OnServiceShutdown() {
+	if err := s.sub.Close(); err != nil {
+		s.logger.Error("failed to close subscriber", slog.String("err", err.Error()))
 	}
 }
