@@ -17,63 +17,24 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"github.com/ThreeDotsLabs/watermill"
-
-	"github.com/ThreeDotsLabs/watermill/message"
+	"fmt"
 	"github.com/flux-agi/flux_go/flux"
 )
 
 func main() {
 	ctx := context.TODO()
 
-	node := flux.NewNode("MyUniqueNodeName")
-	defer node.Close(ctx)
+	service := flux.NewService[string]("keyFireTestService")
 
-	node.OnReady(InitRouter)
+	service.OnNodeReady(func(cfg flux.NodeConfig[string]) error {
+		fmt.Printf("node %s is ready\n", cfg.Alias)
+		return nil
+	})
 
-	router, err := node.Connect(ctx)
-	if err != nil {
-		panic(err)
+	if _, err := service.Run(ctx); err != nil {
+		return
 	}
-
-	err = router.Run(ctx)
-	if err != nil {
-		panic(err)
-    }
 }
-
-func InitRouter(
-	_ []byte,  // Config from editor
-	router *message.Router,
-	pub message.Publisher,
-	sub message.Subscriber,
-) error {
-	router.AddHandler(
-		"keyFireHandler",
-		"input",
-		sub,
-		"output",
-		pub,
-		func(msg *message.Message) ([]*message.Message, error) {
-			return []*message.Message{
-				message.NewMessage(watermill.NewUUID(), []byte("OK")),
-            }, nil
-		},
-	)
-
-	return nil
-}
-```
-
-## Subscribe to node port
-```go
-nodesCfg, _ := flux.GetConfig[string](ctx, service)
-router := flux.DefaultRouterFactory(logger)
-
-ports, _ := nodesCfg.NodesPortByAlias("port_name")
-service.OnPort(ctx, ports, router, func(nodeAlias string, timestamp time.Time, payload []byte) {
-
-})
 ```
 
 See nodes implementations at organisation repositories for more examples.

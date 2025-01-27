@@ -3,7 +3,6 @@ package flux
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 
@@ -11,29 +10,30 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-type Service struct {
-	logger *slog.Logger
-
-	pub         message.Publisher
-	sub         message.Subscriber
+type Service[T any] struct {
 	serviceName string
+	logger      *slog.Logger
 
-	// onConnect func will be called in Connect method after pub & sub creation
+	watermillLogger watermill.LoggerAdapter
+	pub             message.Publisher
+	sub             message.Subscriber
+
+	// onConnect func will be called in Run method after pub & sub creation
 	onConnect func() error
 
-	// onReady func will be called in Connect method after getting config
+	// onReady func will be called in Run method after getting config
 	// it accepts raw payload from message.
-	onReady func(cfg []byte, r *message.Router, pub message.Publisher, sub message.Subscriber) error
+	onReady func(cfg NodesConfig[T], r *message.Router, pub message.Publisher, sub message.Subscriber) error
 
-	topics *Topics
-	status *AtomicValue[Status]
+	topics *ServiceTopics
+	status *AtomicValue[ServiceStatus]
 	state  *AtomicValue[[]byte]
+
+	nodes        []Node[T]
+	nodeHandlers NodeHandlers[T]
 }
 
-func NewService(
-	serviceName string,
-	opts ...ServiceOption,
-) *Service {
+func NewService[T any](serviceName string, opts ...ServiceOption) *Service[T] {
 	options := &ServiceOptions{
 		logger: nil,
 		pub:    nil,
@@ -45,7 +45,7 @@ func NewService(
 		opt(options)
 	}
 
-	return &Service{
+	return &Service[T]{
 		logger:      options.logger,
 		pub:         options.pub,
 		sub:         options.sub,
@@ -53,20 +53,19 @@ func NewService(
 		onConnect:   nil,
 		onReady:     nil,
 		topics:      NewTopics(serviceName),
-		status:      NewAtomicValue(StatusInitializing),
+		status:      NewAtomicValue(ServiceStatusInitializing),
 		state:       NewAtomicValue(options.state),
+		nodes:       make([]Node[T], 0),
 	}
 }
 
-var ErrPredefinedPubSub = errors.New("pub and sub must be nil if you want to run app this way")
-
 //nolint:cyclop
-func (n *Service) Connect(ctx context.Context, opts ...ConnectOption) (*message.Router, error) {
-	if n.pub != nil || n.sub != nil {
-		return nil, ErrPredefinedPubSub
+func (s *Service[T]) Run(ctx context.Context, opts ...ConnectOption) error {
+	if s.pub != nil || s.sub != nil {
+		return fmt.Errorf("pub and sub must be nil if you want to run app this way")
 	}
 
-	options := &ConnectOptions{
+	options := &RunOptions{
 		watermillLogger: watermill.NopLogger{},
 		pubFactory:      DefaultPublisherFactory(DefaultNatsURL),
 		subFactory:      DefaultSubscriberFactory(DefaultNatsURL),
@@ -77,87 +76,76 @@ func (n *Service) Connect(ctx context.Context, opts ...ConnectOption) (*message.
 		opt(options)
 	}
 
+	s.watermillLogger = options.watermillLogger
+
 	var err error
 
-	n.sub, err = options.subFactory(options.watermillLogger)
+	s.sub, err = options.subFactory(options.watermillLogger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create nats sub: %w", err)
+		return fmt.Errorf("failed to create nats sub: %w", err)
 	}
 
-	n.pub, err = options.pubFactory(options.watermillLogger)
+	s.pub, err = options.pubFactory(options.watermillLogger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create nats pub: %w", err)
+		return fmt.Errorf("failed to create nats pub: %w", err)
 	}
 
-	if n.onConnect != nil {
-		err := n.onConnect()
+	if s.onConnect != nil {
+		err := s.onConnect()
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 
-	err = n.UpdateStatus(StatusConnected)
+	err = s.UpdateStatus(ServiceStatusConnected)
 	if err != nil {
-		return nil, fmt.Errorf("failed to update service status: %w", err)
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, options.configTimeout)
-	defer cancel()
-
-	cfg, err := n.GetConfig(ctx)
-	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to update service status: %w", err)
 	}
 
 	r := options.routerFactory(options.watermillLogger)
 
-	err = n.onReady(cfg, r, n.pub, n.sub)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config: %w", err)
+	s.RegisterStatusHandler(r)
+	s.RegisterStateHandler(r)
+	s.RegisterConfigHandler(ctx, r)
+
+	if err := r.Run(ctx); err != nil {
+		return fmt.Errorf("failed to run router: %w", err)
 	}
 
-	err = n.UpdateStatus(StatusReady)
-	if err != nil {
-		return nil, fmt.Errorf("failed to update service status: %w", err)
-	}
-
-	n.RegisterStatusHandler(r)
-	n.RegisterStateHandler(r)
-
-	return r, nil
+	return nil
 }
 
-func (n *Service) Close(ctx context.Context) {
-	if n.pub != nil {
-		err := n.pub.Close()
+func (s *Service[T]) Close(ctx context.Context) {
+	if s.pub != nil {
+		err := s.pub.Close()
 		if err != nil {
-			n.logger.ErrorContext(ctx, "failed to close publisher", slog.String("err", err.Error()))
+			s.logger.ErrorContext(ctx, "failed to close publisher", slog.String("err", err.Error()))
 		}
 
-		n.pub = nil
+		s.pub = nil
 	}
 
-	if n.sub != nil {
-		err := n.sub.Close()
+	if s.sub != nil {
+		err := s.sub.Close()
 		if err != nil {
-			n.logger.ErrorContext(ctx, "failed to close subscriber", slog.String("err", err.Error()))
+			s.logger.ErrorContext(ctx, "failed to close subscriber", slog.String("err", err.Error()))
 		}
 
-		n.sub = nil
+		s.sub = nil
 	}
 }
 
-func (n *Service) Status() Status {
-	status, ok := n.status.Get()
+func (s *Service[T]) Status() ServiceStatus {
+	status, ok := s.status.Get()
 	if !ok {
-		return StatusPaused
+		return ServiceStatusPaused
 	}
 
 	return status
 }
 
-func (n *Service) State() []byte {
-	value, ok := n.state.Get()
+func (s *Service[T]) State() []byte {
+	value, ok := s.state.Get()
 	if !ok {
 		return nil
 	}
@@ -165,38 +153,95 @@ func (n *Service) State() []byte {
 	return value
 }
 
-func (n *Service) Pub() message.Publisher {
-	return n.pub
+func (s *Service[T]) Pub() message.Publisher { return s.pub }
+
+func (s *Service[T]) PubToTopic(topic string, value any) error {
+	if topic == "" {
+		return fmt.Errorf("topic is empty")
+	}
+
+	data, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("could not marshal payload: %w", err)
+	}
+
+	return s.pub.Publish(topic, message.NewMessage(watermill.NewUUID(), data))
 }
 
-func (n *Service) PubToPort(cfg NodesConfig[any], nodeAlias, portName string, payload any) error {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("could not marshal payload - %w", err)
+func (s *Service[T]) PubToPort(port string, value any) error {
+	for _, node := range s.nodes {
+		if err := node.Push(port, value); err != nil {
+			return err
+		}
 	}
-
-	node, err := cfg.GetNodeByAlias(nodeAlias)
-	if err != nil {
-		return fmt.Errorf("could not get node by alias - %w", err)
-	}
-
-	nodePort, err := node.OutputPortByAlias(portName)
-	if err != nil {
-		return fmt.Errorf("could not get node portName by alias - %w", err)
-	}
-
-	return n.pub.Publish(nodePort, message.NewMessage(watermill.NewUUID(), data))
+	return nil
 }
 
-// PubData sends message to topic
-func (n *Service) PubData(topic string, payload any) error {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("could not marshal payload - %w", err)
+func (s *Service[T]) Sub() message.Subscriber { return s.sub }
+
+func (s *Service[T]) reloadNodes(ctx context.Context, nodes *NodesConfig[T]) error {
+	for _, node := range s.nodes {
+		if err := node.Close(); err != nil {
+			s.logger.Error("failed to close node", slog.String("err", err.Error()))
+		}
 	}
-	return n.pub.Publish(topic, message.NewMessage(watermill.NewUUID(), data))
+
+	resultNodes := make([]Node[T], 0)
+	for _, nodeCfg := range *nodes {
+		router := DefaultRouterFactory(s.watermillLogger)
+		sub, err := DefaultSubscriberFactory(DefaultNatsURL)(s.watermillLogger)
+		if err != nil {
+			return fmt.Errorf("failed to create nats sub: %w", err)
+		}
+
+		node := NewNode[T](
+			ctx,
+			router,
+			sub,
+			s.pub,
+			nodeCfg,
+		)
+
+		if err := node.RegisterHandlers(&s.nodeHandlers); err != nil {
+			return fmt.Errorf("failed to register node handlers: %w", err)
+		}
+
+		resultNodes = append(resultNodes, *node)
+	}
+
+	s.nodes = resultNodes
+
+	return nil
 }
 
-func (n *Service) Sub() message.Subscriber {
-	return n.sub
+func (s *Service[T]) RegisterConfigHandler(ctx context.Context, r *message.Router) {
+	r.AddNoPublisherHandler(
+		"flux.service.response_config",
+		s.topics.ResponseConfig(),
+		s.sub,
+		func(msg *message.Message) error {
+			var cfg NodesConfig[T]
+			if err := json.Unmarshal(msg.Payload, &cfg); err != nil {
+				return fmt.Errorf("failed to unmarshal config: %w", err)
+			}
+
+			if s.onReady != nil {
+				if err := s.onReady(cfg, r, s.pub, s.sub); err != nil {
+					return fmt.Errorf("failed to read config: %w", err)
+				}
+			}
+
+			if err := s.reloadNodes(ctx, &cfg); err != nil {
+				return fmt.Errorf("failed to reload nodes: %w", err)
+			}
+
+			if err := s.UpdateStatus(ServiceStatusReady); err != nil {
+				return fmt.Errorf("failed to update service status: %w", err)
+			}
+
+			msg.Ack()
+
+			return nil
+		},
+	)
 }

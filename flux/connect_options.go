@@ -12,7 +12,7 @@ const (
 	DefaultConfigWaitingTimeout = 5 * time.Second
 )
 
-type ConnectOptions struct {
+type RunOptions struct {
 	watermillLogger watermill.LoggerAdapter
 	pubFactory      PublisherFactory
 	subFactory      SubscriberFactory
@@ -20,7 +20,7 @@ type ConnectOptions struct {
 	configTimeout   time.Duration
 }
 
-type ConnectOption func(*ConnectOptions)
+type ConnectOption func(*RunOptions)
 
 type (
 	PublisherFactory  = func(watermill.LoggerAdapter) (message.Publisher, error)
@@ -29,19 +29,19 @@ type (
 )
 
 func WithWatermillLogger(logger watermill.LoggerAdapter) ConnectOption {
-	return func(o *ConnectOptions) {
+	return func(o *RunOptions) {
 		o.watermillLogger = logger
 	}
 }
 
 func WithPublisherFactory(pf PublisherFactory) ConnectOption {
-	return func(n *ConnectOptions) {
+	return func(n *RunOptions) {
 		n.pubFactory = pf
 	}
 }
 
 func WithPublisher(pub message.Publisher) ConnectOption {
-	return func(n *ConnectOptions) {
+	return func(n *RunOptions) {
 		n.pubFactory = func(_ watermill.LoggerAdapter) (message.Publisher, error) {
 			return pub, nil
 		}
@@ -49,13 +49,13 @@ func WithPublisher(pub message.Publisher) ConnectOption {
 }
 
 func WithSubscriberFactory(sf SubscriberFactory) ConnectOption {
-	return func(n *ConnectOptions) {
+	return func(n *RunOptions) {
 		n.subFactory = sf
 	}
 }
 
 func WithSubscriber(sub message.Subscriber) ConnectOption {
-	return func(n *ConnectOptions) {
+	return func(n *RunOptions) {
 		n.subFactory = func(_ watermill.LoggerAdapter) (message.Subscriber, error) {
 			return sub, nil
 		}
@@ -63,13 +63,13 @@ func WithSubscriber(sub message.Subscriber) ConnectOption {
 }
 
 func WithRouterFactory(rf RouterFactory) ConnectOption {
-	return func(n *ConnectOptions) {
+	return func(n *RunOptions) {
 		n.routerFactory = rf
 	}
 }
 
 func WithConfigTimeout(configTimeout time.Duration) ConnectOption {
-	return func(n *ConnectOptions) {
+	return func(n *RunOptions) {
 		n.configTimeout = configTimeout
 	}
 }
