@@ -19,6 +19,7 @@ type NodeHandlers[T any] struct {
 	onStartHandler NodeEventHandler
 	onStopHandler  NodeEventHandler
 	onSubscribe    map[string]func(node NodeConfig[T], payload []byte) error
+	onDestroy      func(node NodeConfig[T]) error
 	mu             sync.Mutex
 }
 
@@ -50,6 +51,10 @@ func (n *NodeHandlers[T]) GetSubscribeHandler(port string) (func(node NodeConfig
 	return handler, ok
 }
 
+func (n *NodeHandlers[T]) OnDestroy(handler func(node NodeConfig[T]) error) {
+	n.onDestroy = handler
+}
+
 type Node[T any] struct {
 	ctx    context.Context
 	router *message.Router
@@ -58,6 +63,9 @@ type Node[T any] struct {
 	config NodeConfig[T]
 	status *AtomicValue[NodeStatus]
 	state  *AtomicValue[[]byte]
+
+	// Handlers
+	onDestroyHandler func(node NodeConfig[T]) error
 }
 
 func NewNode[T any](
@@ -90,6 +98,10 @@ func (n *Node[T]) RegisterHandlers(handlers *NodeHandlers[T]) error {
 
 	if handlers.onStopHandler != nil {
 		n.OnStop(handlers.onStopHandler)
+	}
+
+	if handlers.onDestroy != nil {
+		n.onDestroyHandler = handlers.onDestroy
 	}
 
 	for port, handler := range handlers.onSubscribe {
@@ -171,6 +183,10 @@ func (n *Node[T]) OnSubscribe(port string, handler func(node NodeConfig[T], payl
 	return nil
 }
 
+func (n *Node[T]) OnDestroy(handler func(node NodeConfig[T]) error) {
+	n.onDestroyHandler = handler
+}
+
 func (n *Node[T]) State() []byte {
 	value, ok := n.state.Get()
 	if !ok {
@@ -198,6 +214,9 @@ func (n *Node[T]) SetStatus(status NodeStatus) error {
 }
 
 func (n *Node[T]) Close() error {
+	if err := n.onDestroyHandler(n.config); err != nil {
+		return fmt.Errorf("could not run destroy handler: %w", err)
+	}
 	return n.router.Close()
 }
 

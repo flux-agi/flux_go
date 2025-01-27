@@ -43,9 +43,3 @@ func (s *Service[T]) SetState(value any) error {
 
 	return nil
 }
-
-//func (s *Service[T]) handleOnNodeReady() error {
-//	for _, node := range s.nodes {
-//		node.
-//	}
-//}

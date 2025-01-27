@@ -12,6 +12,10 @@ func (s *Service[T]) OnNodeStop(handler NodeEventHandler) {
 	s.nodeHandlers.OnStop(handler)
 }
 
+func (s *Service[T]) OnNodeDestroy(handler func(node NodeConfig[T]) error) {
+	s.nodeHandlers.OnDestroy(handler)
+}
+
 func (s *Service[T]) OnNodeSubscribe(port string, handler func(node NodeConfig[T], payload []byte) error) error {
 	s.nodeHandlers.OnSubscribe(port, handler)
 	for _, node := range s.nodes {
