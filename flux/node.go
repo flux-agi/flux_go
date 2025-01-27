@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -20,6 +22,7 @@ type NodeHandlers[T any] struct {
 	onStopHandler  NodeEventHandler
 	onSubscribe    map[string]func(node NodeConfig[T], payload []byte) error
 	onDestroy      func(node NodeConfig[T]) error
+	onTick         func(node NodeConfig[T], deltaTime time.Duration, timestamp time.Time) error
 	mu             sync.Mutex
 }
 
@@ -51,6 +54,10 @@ func (n *NodeHandlers[T]) GetSubscribeHandler(port string) (func(node NodeConfig
 	return handler, ok
 }
 
+func (n *NodeHandlers[T]) OnTick(handler func(node NodeConfig[T], deltaTime time.Duration, timestamp time.Time) error) {
+	n.onTick = handler
+}
+
 func (n *NodeHandlers[T]) OnDestroy(handler func(node NodeConfig[T]) error) {
 	n.onDestroy = handler
 }
@@ -66,6 +73,9 @@ type Node[T any] struct {
 
 	// Handlers
 	onDestroyHandler func(node NodeConfig[T]) error
+
+	// Private
+	lastTick time.Time
 }
 
 func NewNode[T any](
@@ -76,12 +86,13 @@ func NewNode[T any](
 	config NodeConfig[T],
 ) *Node[T] {
 	return &Node[T]{
-		ctx:    ctx,
-		router: DefaultRouterFactory(logger),
-		sub:    sub,
-		pub:    pub,
-		config: config,
-		state:  NewAtomicValue[[]byte](nil),
+		ctx:      ctx,
+		router:   DefaultRouterFactory(logger),
+		sub:      sub,
+		pub:      pub,
+		config:   config,
+		state:    NewAtomicValue[[]byte](nil),
+		lastTick: time.Now(),
 	}
 }
 
@@ -102,6 +113,10 @@ func (n *Node[T]) RegisterHandlers(handlers *NodeHandlers[T]) error {
 
 	if handlers.onDestroy != nil {
 		n.onDestroyHandler = handlers.onDestroy
+	}
+
+	if handlers.onTick != nil {
+		n.OnTick(handlers.onTick)
 	}
 
 	for port, handler := range handlers.onSubscribe {
@@ -181,6 +196,42 @@ func (n *Node[T]) OnSubscribe(port string, handler func(node NodeConfig[T], payl
 		},
 	)
 	return nil
+}
+
+func (n *Node[T]) OnTick(handler func(node NodeConfig[T], deltaTime time.Duration, timestamp time.Time) error) {
+	switch n.config.Timer.Type {
+	case TimerTypeNone:
+		return
+
+	case TimerTypeLocal:
+		go func() {
+			for {
+				select {
+				case <-n.ctx.Done():
+					return
+				default:
+					if err := handler(n.config, time.Since(n.lastTick), time.Now()); err != nil {
+						slog.Error("could not handle tick", slog.Any("err", err))
+					}
+					time.Sleep(time.Duration(n.config.Timer.Interval) * time.Millisecond)
+				}
+			}
+		}()
+
+	case TimerTypeGlobal:
+		n.router.AddNoPublisherHandler(
+			"flux.node.on_tick",
+			"service/tick",
+			n.sub,
+			func(msg *message.Message) error {
+				if err := handler(n.config, time.Since(n.lastTick), time.Now()); err != nil {
+					return err
+				}
+				return nil
+			},
+		)
+	}
+
 }
 
 func (n *Node[T]) OnDestroy(handler func(node NodeConfig[T]) error) {

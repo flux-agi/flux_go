@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"testing"
+	"time"
 )
 
 func TestNode_Lifecycle(t *testing.T) {
@@ -23,6 +24,12 @@ func TestNode_Lifecycle(t *testing.T) {
 		resChan <- struct{}{}
 		return nil
 	})
+
+	service.OnTick(func(node NodeConfig[string], deltaTime time.Duration, timestamp time.Time) error {
+		fmt.Println("tick")
+		return nil
+	})
+
 	<-resChan
 
 	if _, err := service.Run(ctx); err != nil {

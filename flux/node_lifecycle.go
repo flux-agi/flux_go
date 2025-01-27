@@ -1,5 +1,7 @@
 package flux
 
+import "time"
+
 func (s *Service[T]) OnNodeReady(handler func(cfg NodeConfig[T]) error) {
 	s.nodeHandlers.OnReady(handler)
 }
@@ -24,4 +26,8 @@ func (s *Service[T]) OnNodeSubscribe(port string, handler func(node NodeConfig[T
 		}
 	}
 	return nil
+}
+
+func (s *Service[T]) OnTick(handler func(node NodeConfig[T], deltaTime time.Duration, timestamp time.Time) error) {
+	s.nodeHandlers.OnTick(handler)
 }
