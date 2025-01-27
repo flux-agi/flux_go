@@ -3,6 +3,7 @@ package flux
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -81,14 +82,14 @@ type Node[T any] struct {
 
 func NewNode[T any](
 	ctx context.Context,
-	logger watermill.LoggerAdapter,
+	router *message.Router,
 	sub message.Subscriber,
 	pub message.Publisher,
 	config NodeConfig[T],
 ) *Node[T] {
 	return &Node[T]{
 		ctx:      ctx,
-		router:   DefaultRouterFactory(logger),
+		router:   router,
 		sub:      sub,
 		pub:      pub,
 		config:   config,
@@ -128,7 +129,7 @@ func (n *Node[T]) RegisterHandlers(handlers *NodeHandlers[T]) error {
 
 	go func() {
 		if err := n.router.Run(n.ctx); err != nil {
-			slog.Error("error run router", slog.String("node", n.config.Alias))
+			slog.Error("error run router", slog.String("node", n.config.Alias), slog.Any("err", err))
 		}
 	}()
 
@@ -186,7 +187,7 @@ func (n *Node[T]) Push(port string, data any) error {
 
 func (n *Node[T]) OnSubscribe(port string, handler func(node NodeConfig[T], payload []byte) error) error {
 	n.router.AddNoPublisherHandler(
-		"flux.node.on_subscribe."+port,
+		fmt.Sprintf("flux.node.on_subscribe.%s.%s", n.config.Alias, port),
 		buildTopicNodePort(n.config.Alias, port),
 		n.sub,
 		func(msg *message.Message) error {
@@ -222,7 +223,7 @@ func (n *Node[T]) OnTick(handler func(node NodeConfig[T], deltaTime time.Duratio
 
 	case TimerTypeGlobal:
 		n.router.AddNoPublisherHandler(
-			"flux.node.on_tick",
+			"flux.node.on_tick."+n.config.Alias,
 			"service/tick",
 			n.sub,
 			func(msg *message.Message) error {
@@ -267,10 +268,22 @@ func (n *Node[T]) SetStatus(status NodeStatus) error {
 }
 
 func (n *Node[T]) Close() error {
-	if err := n.onDestroyHandler(n.config); err != nil {
-		return fmt.Errorf("could not run destroy handler: %w", err)
+	var err error
+	if routerErr := n.router.Close(); routerErr != nil {
+		errors.Join(err, fmt.Errorf("could not close router: %w", routerErr))
 	}
-	return n.router.Close()
+
+	if subErr := n.sub.Close(); subErr != nil {
+		errors.Join(err, fmt.Errorf("could not close subscriber: %w", subErr))
+	}
+
+	if n.onDestroyHandler != nil {
+		if destroyErr := n.onDestroyHandler(n.config); destroyErr != nil {
+			errors.Join(destroyErr, fmt.Errorf("could not run destroy handler: %w", destroyErr))
+		}
+	}
+
+	return err
 }
 
 func buildTopicNodePort(alias, port string) string { return fmt.Sprintf("node/%s/%s", alias, port) }
