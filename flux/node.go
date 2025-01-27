@@ -63,7 +63,8 @@ func (n *NodeHandlers[T]) OnDestroy(handler func(node NodeConfig[T]) error) {
 }
 
 type Node[T any] struct {
-	ctx    context.Context
+	ctx context.Context
+
 	router *message.Router
 	pub    message.Publisher
 	sub    message.Subscriber
@@ -125,6 +126,12 @@ func (n *Node[T]) RegisterHandlers(handlers *NodeHandlers[T]) error {
 		}
 	}
 
+	go func() {
+		if err := n.router.Run(n.ctx); err != nil {
+			slog.Error("error run router", slog.String("node", n.config.Alias))
+		}
+	}()
+
 	return nil
 }
 
@@ -178,14 +185,9 @@ func (n *Node[T]) Push(port string, data any) error {
 }
 
 func (n *Node[T]) OnSubscribe(port string, handler func(node NodeConfig[T], payload []byte) error) error {
-	topic, err := n.config.InputPortByAlias(port)
-	if err != nil {
-		return fmt.Errorf("could not get input port by alias: %w", err)
-	}
-
 	n.router.AddNoPublisherHandler(
 		"flux.node.on_subscribe."+port,
-		buildTopicNodePort(n.config.Alias, topic),
+		buildTopicNodePort(n.config.Alias, port),
 		n.sub,
 		func(msg *message.Message) error {
 			if err := handler(n.config, msg.Payload); err != nil {

@@ -105,10 +105,10 @@ func (s *Service[T]) Run(ctx context.Context, opts ...ConnectOption) (*message.R
 		return nil, fmt.Errorf("failed to update service status: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, options.configTimeout)
+	timeoutCtx, cancel := context.WithTimeout(ctx, options.configTimeout)
 	defer cancel()
 
-	cfg, err := s.GetConfig(ctx)
+	cfg, err := s.GetConfig(timeoutCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -220,12 +220,6 @@ func (s *Service[T]) reloadNodes(ctx context.Context, nodes *NodesConfig[T]) err
 
 		if err := node.RegisterHandlers(&s.nodeHandlers); err != nil {
 			return fmt.Errorf("failed to register node handlers: %w", err)
-		}
-
-		if s.nodeHandlers.onReadyHandler != nil {
-			if err := s.nodeHandlers.onReadyHandler(node.config); err != nil {
-				return fmt.Errorf("could not run ready handler: %w", err)
-			}
 		}
 
 		resultNodes = append(resultNodes, *node)
