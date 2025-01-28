@@ -19,8 +19,8 @@ type NodeConfig[T any] struct {
 
 // NodePort is a node output/input port for communication
 type NodePort struct {
-	Alias string `json:"alias,omitempty"`
-	Topic string `json:"topic,omitempty"`
+	Alias  string   `json:"alias,omitempty"`
+	Topics []string `json:"topics,omitempty"`
 }
 
 type TimerType string
@@ -75,24 +75,4 @@ func (n *NodesConfig[T]) GetNodeByAlias(alias string) (*NodeConfig[T], error) {
 		}
 	}
 	return nil, fmt.Errorf("node with alias %s not found", alias)
-}
-
-// InputPortByAlias returns input port by alias
-func (c *NodeConfig[T]) InputPortByAlias(alias string) (string, error) {
-	for _, port := range c.InputPorts {
-		if strings.EqualFold(port.Alias, alias) {
-			return port.Topic, nil
-		}
-	}
-	return "", fmt.Errorf("input port with alias %s not found", alias)
-}
-
-// OutputPortByAlias returns output port by alias
-func (c *NodeConfig[T]) OutputPortByAlias(alias string) (string, error) {
-	for _, port := range c.OutputPorts {
-		if strings.EqualFold(port.Alias, alias) {
-			return port.Topic, nil
-		}
-	}
-	return "", fmt.Errorf("input port with alias %s not found", alias)
 }
