@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -33,7 +34,12 @@ type Service[T any] struct {
 	nodeHandlers NodeHandlers[T]
 }
 
-func NewService[T any](serviceName string, opts ...ServiceOption) *Service[T] {
+func NewService[T any](opts ...ServiceOption) *Service[T] {
+	serviceName, ok := os.LookupEnv("SERVICE_ALIAS")
+	if !ok {
+		panic(fmt.Errorf("SERVICE_ALIAS is not set"))
+	}
+
 	options := &ServiceOptions{
 		logger: nil,
 		pub:    nil,
