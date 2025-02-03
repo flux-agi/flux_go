@@ -186,18 +186,26 @@ func (n *Node[T]) Push(port string, data any) error {
 }
 
 func (n *Node[T]) OnSubscribe(port string, handler func(node NodeConfig[T], payload []byte) error) error {
-	n.router.AddNoPublisherHandler(
-		fmt.Sprintf("flux.node.on_subscribe.%s.%s", n.config.Alias, port),
-		buildTopicNodePort(n.config.Alias, port),
-		n.sub,
-		func(msg *message.Message) error {
-			if err := handler(n.config, msg.Payload); err != nil {
-				return err
-			}
-			msg.Ack()
-			return nil
-		},
-	)
+	for _, p := range n.config.Inputs {
+		if p.Alias != port {
+			continue
+		}
+
+		for _, topic := range p.Topics {
+			n.router.AddNoPublisherHandler(
+				fmt.Sprintf("flux.node.on_subscribe.%s", topic),
+				topic,
+				n.sub,
+				func(msg *message.Message) error {
+					if err := handler(n.config, msg.Payload); err != nil {
+						return err
+					}
+					msg.Ack()
+					return nil
+				},
+			)
+		}
+	}
 	return nil
 }
 

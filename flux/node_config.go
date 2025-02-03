@@ -10,11 +10,11 @@ type NodesConfig[T any] []NodeConfig[T]
 
 // NodeConfig is a node config
 type NodeConfig[T any] struct {
-	Alias       string        `json:"alias,omitempty"`
-	InputPorts  []NodePort    `json:"input_ports,omitempty"`
-	OutputPorts []NodePort    `json:"output_ports,omitempty"`
-	Timer       *TickSettings `json:"timer,omitempty"`
-	Config      T             `json:"config,omitempty"`
+	Alias   string        `json:"alias,omitempty"`
+	Inputs  []NodePort    `json:"input_ports,omitempty"`
+	Outputs []NodePort    `json:"output_ports,omitempty"`
+	Timer   *TickSettings `json:"timer,omitempty"`
+	Config  T             `json:"config,omitempty"`
 }
 
 // NodePort is a node output/input port for communication
@@ -44,7 +44,7 @@ type NodesPort map[string]NodePort
 func (n *NodesConfig[T]) NodesPortByAlias(alias string) (NodesPort, error) {
 	var ports NodesPort
 	for _, node := range *n {
-		for _, port := range node.InputPorts {
+		for _, port := range node.Inputs {
 			if strings.EqualFold(port.Alias, alias) {
 				ports[node.Alias] = port
 			}
