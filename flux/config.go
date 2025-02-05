@@ -48,7 +48,7 @@ func (s *Service[T]) GetConfig(ctx context.Context) (*NodesConfig[T], error) {
 }
 
 func (s *Service[T]) sendConfigRequest() error {
-	msg := message.NewMessage(watermill.NewUUID(), []byte(s.serviceName))
+	msg := message.NewMessage(watermill.NewUUID(), []byte(s.serviceID))
 	err := s.pub.Publish(
 		s.topics.RequestConfig(),
 		msg,

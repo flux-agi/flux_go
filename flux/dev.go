@@ -44,7 +44,7 @@ func (s *Service[T]) EnableDevMode() error {
 		id = string(openedFile)
 	}
 
-	msg := message.NewMessage(watermill.NewUUID(), []byte(s.serviceName))
+	msg := message.NewMessage(watermill.NewUUID(), []byte(s.serviceID))
 	publishErr := s.pub.Publish(
 		s.topics.PushDevelopmentMode(id),
 		msg,

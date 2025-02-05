@@ -12,8 +12,8 @@ import (
 )
 
 type Service[T any] struct {
-	serviceName string
-	logger      *slog.Logger
+	serviceID string
+	logger    *slog.Logger
 
 	watermillLogger watermill.LoggerAdapter
 	pub             message.Publisher
@@ -35,9 +35,9 @@ type Service[T any] struct {
 }
 
 func NewService[T any](opts ...ServiceOption) *Service[T] {
-	serviceName, ok := os.LookupEnv("SERVICE_ALIAS")
+	serviceID, ok := os.LookupEnv("SERVICE_ID")
 	if !ok {
-		panic(fmt.Errorf("SERVICE_ALIAS is not set"))
+		panic("SERVICE_ID is not set")
 	}
 
 	options := &ServiceOptions{
@@ -52,16 +52,16 @@ func NewService[T any](opts ...ServiceOption) *Service[T] {
 	}
 
 	return &Service[T]{
-		logger:      options.logger,
-		pub:         options.pub,
-		sub:         options.sub,
-		serviceName: serviceName,
-		onConnect:   nil,
-		onReady:     nil,
-		topics:      NewTopics(serviceName),
-		status:      NewAtomicValue(ServiceStatusInitializing),
-		state:       NewAtomicValue(options.state),
-		nodes:       make([]Node[T], 0),
+		logger:    options.logger,
+		pub:       options.pub,
+		sub:       options.sub,
+		serviceID: serviceID,
+		onConnect: nil,
+		onReady:   nil,
+		topics:    NewTopics(serviceID),
+		status:    NewAtomicValue(ServiceStatusInitializing),
+		state:     NewAtomicValue(options.state),
+		nodes:     make([]Node[T], 0),
 	}
 }
 
@@ -173,17 +173,6 @@ func (s *Service[T]) PubToTopic(topic string, value any) error {
 
 	return s.pub.Publish(topic, message.NewMessage(watermill.NewUUID(), data))
 }
-
-func (s *Service[T]) PubToPort(port string, value any) error {
-	for _, node := range s.nodes {
-		if err := node.Push(port, value); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *Service[T]) Sub() message.Subscriber { return s.sub }
 
 func (s *Service[T]) reloadNodes(ctx context.Context, nodes *NodesConfig[T]) error {
 	for _, node := range s.nodes {

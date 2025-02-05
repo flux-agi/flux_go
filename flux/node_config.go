@@ -10,17 +10,17 @@ type NodesConfig[T any] []NodeConfig[T]
 
 // NodeConfig is a node config
 type NodeConfig[T any] struct {
-	Alias   string        `json:"alias,omitempty"`
-	Inputs  []NodePort    `json:"input_ports,omitempty"`
-	Outputs []NodePort    `json:"output_ports,omitempty"`
+	ID      string        `json:"_id,omitempty"` //nolint:tagliatelle
+	Inputs  []InputPort   `json:"input_ports,omitempty"`
+	Outputs []OutputPort  `json:"output_ports,omitempty"`
 	Timer   *TickSettings `json:"timer,omitempty"`
 	Config  T             `json:"config,omitempty"`
 }
 
-// NodePort is a node output/input port for communication
-type NodePort struct {
-	Alias  string   `json:"alias,omitempty"`
-	Topics []string `json:"topics,omitempty"`
+// TickSettings is a local tick settings of node.
+type TickSettings struct {
+	Type     TimerType `json:"type,omitempty"`
+	Interval int       `json:"intervalMs,omitempty"` //nolint:tagliatelle
 }
 
 type TimerType string
@@ -31,38 +31,11 @@ const (
 	TimerTypeNone   TimerType = "NONE"
 )
 
-// TickSettings is a local tick settings of node
-type TickSettings struct {
-	Type     TimerType `json:"type,omitempty"`
-	Interval int       `json:"intervalMs,omitempty"`
-}
-
-// NodesPort is a map of node ports by node alias
-type NodesPort map[string]NodePort
-
-// NodesPortByAlias returns node ports by alias
-func (n *NodesConfig[T]) NodesPortByAlias(alias string) (NodesPort, error) {
-	var ports NodesPort
-	for _, node := range *n {
-		for _, port := range node.Inputs {
-			if strings.EqualFold(port.Alias, alias) {
-				ports[node.Alias] = port
-			}
-		}
-	}
-
-	if len(ports) == 0 {
-		return nil, fmt.Errorf("port with alias %s not found", alias)
-	}
-
-	return ports, nil
-}
-
 // GetTickSettingsByAlias returns tick settings by alias
 func (n *NodesConfig[T]) GetTickSettingsByAlias() map[string]TickSettings {
 	settings := map[string]TickSettings{}
 	for _, n := range *n {
-		settings[n.Alias] = *n.Timer
+		settings[n.ID] = *n.Timer
 	}
 	return settings
 }
@@ -70,7 +43,7 @@ func (n *NodesConfig[T]) GetTickSettingsByAlias() map[string]TickSettings {
 // GetNodeByAlias returns node by alias
 func (n *NodesConfig[T]) GetNodeByAlias(alias string) (*NodeConfig[T], error) {
 	for _, node := range *n {
-		if strings.EqualFold(node.Alias, alias) {
+		if strings.EqualFold(node.ID, alias) {
 			return &node, nil
 		}
 	}
