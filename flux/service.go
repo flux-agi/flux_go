@@ -16,6 +16,7 @@ type Service[T any] struct {
 	logger    *slog.Logger
 
 	watermillLogger watermill.LoggerAdapter
+	router          *message.Router
 	pub             message.Publisher
 	sub             message.Subscriber
 
@@ -24,11 +25,11 @@ type Service[T any] struct {
 
 	// onReady func will be called in Run method after getting config
 	// it accepts raw payload from message.
-	onReady func(cfg NodesConfig[T], r *message.Router, pub message.Publisher, sub message.Subscriber) error
+	onReady func(cfg NodesConfig[T]) error
 
 	topics *ServiceTopics
 	status *AtomicValue[ServiceStatus]
-	state  *AtomicValue[[]byte]
+	state  *State
 
 	nodes        []Node[T]
 	nodeHandlers NodeHandlers[T]
@@ -44,7 +45,7 @@ func NewService[T any](opts ...ServiceOption) *Service[T] {
 		logger: nil,
 		pub:    nil,
 		sub:    nil,
-		state:  nil,
+		state:  NewState(),
 	}
 
 	for _, opt := range opts {
@@ -60,7 +61,7 @@ func NewService[T any](opts ...ServiceOption) *Service[T] {
 		onReady:   nil,
 		topics:    NewTopics(serviceID),
 		status:    NewAtomicValue(ServiceStatusInitializing),
-		state:     NewAtomicValue(options.state),
+		state:     options.state,
 		nodes:     make([]Node[T], 0),
 	}
 }
@@ -108,13 +109,12 @@ func (s *Service[T]) Run(ctx context.Context, opts ...ConnectOption) error {
 		return fmt.Errorf("failed to update service status: %w", err)
 	}
 
-	r := options.routerFactory(options.watermillLogger)
+	s.router = options.routerFactory(options.watermillLogger)
 
-	s.RegisterStatusHandler(r)
-	s.RegisterStateHandler(r)
-	s.RegisterConfigHandler(ctx, r)
+	s.RegisterStatusHandler()
+	s.RegisterConfigHandler(ctx)
 
-	if err := r.Run(ctx); err != nil {
+	if err := s.router.Run(ctx); err != nil {
 		return fmt.Errorf("failed to run router: %w", err)
 	}
 
@@ -150,16 +150,15 @@ func (s *Service[T]) Status() ServiceStatus {
 	return status
 }
 
-func (s *Service[T]) State() []byte {
-	value, ok := s.state.Get()
-	if !ok {
-		return nil
-	}
-
-	return value
+func (s *Service[T]) State() *State {
+	return s.state
 }
 
 func (s *Service[T]) Pub() message.Publisher { return s.pub }
+
+func (s *Service[T]) Sub() message.Subscriber { return s.sub }
+
+func (s *Service[T]) Router() *message.Router { return s.router }
 
 func (s *Service[T]) PubToTopic(topic string, value any) error {
 	if topic == "" {
@@ -209,8 +208,8 @@ func (s *Service[T]) reloadNodes(ctx context.Context, nodes *NodesConfig[T]) err
 	return nil
 }
 
-func (s *Service[T]) RegisterConfigHandler(ctx context.Context, r *message.Router) {
-	r.AddNoPublisherHandler(
+func (s *Service[T]) RegisterConfigHandler(ctx context.Context) {
+	s.router.AddNoPublisherHandler(
 		"flux.service.response_config",
 		s.topics.ResponseConfig(),
 		s.sub,
@@ -221,7 +220,7 @@ func (s *Service[T]) RegisterConfigHandler(ctx context.Context, r *message.Route
 			}
 
 			if s.onReady != nil {
-				if err := s.onReady(cfg, r, s.pub, s.sub); err != nil {
+				if err := s.onReady(cfg); err != nil {
 					return fmt.Errorf("failed to read config: %w", err)
 				}
 			}

@@ -1,45 +1,33 @@
 package flux
 
-import (
-	"encoding/json"
-	"fmt"
+import "sync"
 
-	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill/message"
-)
+type State struct {
+	mu    *sync.RWMutex
+	store map[string]any
 
-func (s *Service[T]) RegisterStateHandler(r *message.Router) {
-	r.AddHandler(
-		"flux.request_common_state",
-		s.topics.GetCommonState(),
-		s.sub,
-		s.topics.SetCommonState(),
-		s.pub,
-		s.handleStateRequest,
-	)
+	// TODO: we can have a publisher here to notify manager about changing of state
 }
 
-func (s *Service[T]) handleStateRequest(_ *message.Message) ([]*message.Message, error) {
-	state := s.State()
-
-	return []*message.Message{
-		message.NewMessage(watermill.NewUUID(), state),
-	}, nil
+func NewState() *State {
+	return &State{
+		mu:    new(sync.RWMutex),
+		store: make(map[string]any),
+	}
 }
 
-func (s *Service[T]) SetState(value any) error {
-	raw, err := json.Marshal(value)
-	if err != nil {
-		return fmt.Errorf("could not marshal state: %w", err)
-	}
+func (s *State) Set(key string, value any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	s.state.Set(raw)
-	err = s.pub.Publish(
-		s.topics.SetCommonState(),
-	)
-	if err != nil {
-		return fmt.Errorf("could not publish state: %w", err)
-	}
+	// TODO: notify manager about state change
 
-	return nil
+	s.store[key] = value
+}
+
+func (s *State) Get(key string) any {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.store[key]
 }

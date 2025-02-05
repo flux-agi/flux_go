@@ -18,8 +18,8 @@ const (
 	ServiceStatusError        ServiceStatus = "ERROR"
 )
 
-func (s *Service[T]) RegisterStatusHandler(r *message.Router) {
-	r.AddHandler(
+func (s *Service[T]) RegisterStatusHandler() {
+	s.router.AddHandler(
 		"flux.request_status",
 		s.topics.RequestStatus(),
 		s.sub,

@@ -149,7 +149,7 @@ func (s *Service[T]) OnServiceConnect(handler func() error) {
 	s.onConnect = handler
 }
 
-func (s *Service[T]) OnServiceReady(handler func(NodesConfig[T], *message.Router, message.Publisher, message.Subscriber) error) {
+func (s *Service[T]) OnServiceReady(handler func(NodesConfig[T]) error) {
 	s.onReady = handler
 }
 

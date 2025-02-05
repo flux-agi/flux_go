@@ -10,7 +10,7 @@ type ServiceOptions struct {
 	logger *slog.Logger
 	pub    message.Publisher
 	sub    message.Subscriber
-	state  []byte
+	state  *State
 }
 
 type ServiceOption func(*ServiceOptions)
@@ -33,7 +33,7 @@ func WithServiceSub(sub message.Subscriber) ServiceOption {
 	}
 }
 
-func WithServiceState(state []byte) ServiceOption {
+func WithServiceState(state *State) ServiceOption {
 	return func(o *ServiceOptions) {
 		o.state = state
 	}
