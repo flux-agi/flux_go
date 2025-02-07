@@ -9,42 +9,47 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
+
+	"github.com/flux-agi/flux_go/fluxmq"
 )
 
 type Service[T any] struct {
-	serviceName string
-	logger      *slog.Logger
+	serviceID string
+	logger    *slog.Logger
 
 	watermillLogger watermill.LoggerAdapter
+	router          *message.Router
 	pub             message.Publisher
 	sub             message.Subscriber
+	call            fluxmq.Caller
 
 	// onConnect func will be called in Run method after pub & sub creation
 	onConnect func() error
 
 	// onReady func will be called in Run method after getting config
 	// it accepts raw payload from message.
-	onReady func(cfg NodesConfig[T], r *message.Router, pub message.Publisher, sub message.Subscriber) error
+	onReady func(cfg NodesConfig[T]) error
 
 	topics *ServiceTopics
 	status *AtomicValue[ServiceStatus]
-	state  *AtomicValue[[]byte]
+	state  *State
 
 	nodes        []Node[T]
 	nodeHandlers NodeHandlers[T]
 }
 
 func NewService[T any](opts ...ServiceOption) *Service[T] {
-	serviceName, ok := os.LookupEnv("SERVICE_ALIAS")
+	serviceID, ok := os.LookupEnv("SERVICE_ID")
 	if !ok {
-		panic(fmt.Errorf("SERVICE_ALIAS is not set"))
+		panic("SERVICE_ID is not set")
 	}
 
 	options := &ServiceOptions{
 		logger: nil,
 		pub:    nil,
 		sub:    nil,
-		state:  nil,
+		call:   nil,
+		state:  NewState(),
 	}
 
 	for _, opt := range opts {
@@ -52,16 +57,17 @@ func NewService[T any](opts ...ServiceOption) *Service[T] {
 	}
 
 	return &Service[T]{
-		logger:      options.logger,
-		pub:         options.pub,
-		sub:         options.sub,
-		serviceName: serviceName,
-		onConnect:   nil,
-		onReady:     nil,
-		topics:      NewTopics(serviceName),
-		status:      NewAtomicValue(ServiceStatusInitializing),
-		state:       NewAtomicValue(options.state),
-		nodes:       make([]Node[T], 0),
+		logger:    options.logger,
+		pub:       options.pub,
+		sub:       options.sub,
+		call:      options.call,
+		serviceID: serviceID,
+		onConnect: nil,
+		onReady:   nil,
+		topics:    NewTopics(serviceID),
+		status:    NewAtomicValue(ServiceStatusInitializing),
+		state:     options.state,
+		nodes:     make([]Node[T], 0),
 	}
 }
 
@@ -73,10 +79,13 @@ func (s *Service[T]) Run(ctx context.Context, opts ...ConnectOption) error {
 
 	options := &RunOptions{
 		watermillLogger: watermill.NopLogger{},
-		pubFactory:      DefaultPublisherFactory(DefaultNatsURL),
-		subFactory:      DefaultSubscriberFactory(DefaultNatsURL),
-		routerFactory:   DefaultRouterFactory,
-		configTimeout:   DefaultConfigWaitingTimeout,
+		// TODO: use same connection for pub, sub and call.
+		pubFactory:  DefaultPublisherFactory(DefaultNatsURL),
+		subFactory:  DefaultSubscriberFactory(DefaultNatsURL),
+		callFactory: DefaultCallerFactory(DefaultNatsURL),
+
+		routerFactory: DefaultRouterFactory,
+		configTimeout: DefaultConfigWaitingTimeout,
 	}
 	for _, opt := range opts {
 		opt(options)
@@ -108,13 +117,12 @@ func (s *Service[T]) Run(ctx context.Context, opts ...ConnectOption) error {
 		return fmt.Errorf("failed to update service status: %w", err)
 	}
 
-	r := options.routerFactory(options.watermillLogger)
+	s.router = options.routerFactory(options.watermillLogger)
 
-	s.RegisterStatusHandler(r)
-	s.RegisterStateHandler(r)
-	s.RegisterConfigHandler(ctx, r)
+	s.RegisterStatusHandler()
+	s.RegisterConfigHandler(ctx)
 
-	if err := r.Run(ctx); err != nil {
+	if err := s.router.Run(ctx); err != nil {
 		return fmt.Errorf("failed to run router: %w", err)
 	}
 
@@ -150,16 +158,15 @@ func (s *Service[T]) Status() ServiceStatus {
 	return status
 }
 
-func (s *Service[T]) State() []byte {
-	value, ok := s.state.Get()
-	if !ok {
-		return nil
-	}
-
-	return value
+func (s *Service[T]) State() *State {
+	return s.state
 }
 
 func (s *Service[T]) Pub() message.Publisher { return s.pub }
+
+func (s *Service[T]) Sub() message.Subscriber { return s.sub }
+
+func (s *Service[T]) Router() *message.Router { return s.router }
 
 func (s *Service[T]) PubToTopic(topic string, value any) error {
 	if topic == "" {
@@ -173,17 +180,6 @@ func (s *Service[T]) PubToTopic(topic string, value any) error {
 
 	return s.pub.Publish(topic, message.NewMessage(watermill.NewUUID(), data))
 }
-
-func (s *Service[T]) PubToPort(port string, value any) error {
-	for _, node := range s.nodes {
-		if err := node.Push(port, value); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *Service[T]) Sub() message.Subscriber { return s.sub }
 
 func (s *Service[T]) reloadNodes(ctx context.Context, nodes *NodesConfig[T]) error {
 	for _, node := range s.nodes {
@@ -220,8 +216,8 @@ func (s *Service[T]) reloadNodes(ctx context.Context, nodes *NodesConfig[T]) err
 	return nil
 }
 
-func (s *Service[T]) RegisterConfigHandler(ctx context.Context, r *message.Router) {
-	r.AddNoPublisherHandler(
+func (s *Service[T]) RegisterConfigHandler(ctx context.Context) {
+	s.router.AddNoPublisherHandler(
 		"flux.service.response_config",
 		s.topics.ResponseConfig(),
 		s.sub,
@@ -232,7 +228,7 @@ func (s *Service[T]) RegisterConfigHandler(ctx context.Context, r *message.Route
 			}
 
 			if s.onReady != nil {
-				if err := s.onReady(cfg, r, s.pub, s.sub); err != nil {
+				if err := s.onReady(cfg); err != nil {
 					return fmt.Errorf("failed to read config: %w", err)
 				}
 			}

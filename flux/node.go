@@ -128,8 +128,9 @@ func (n *Node[T]) RegisterHandlers(handlers *NodeHandlers[T]) error {
 	}
 
 	go func() {
+		// TODO: run handlers
 		if err := n.router.Run(n.ctx); err != nil {
-			slog.Error("error run router", slog.String("node", n.config.Alias), slog.Any("err", err))
+			slog.Error("error run router", slog.String("node", n.config.ID), slog.Any("err", err))
 		}
 	}()
 
@@ -145,11 +146,11 @@ func (n *Node[T]) OnReady(handler func(node NodeConfig[T]) error) error {
 
 func (n *Node[T]) OnStart(handler NodeEventHandler) {
 	n.router.AddNoPublisherHandler(
-		"flux.node.on_start."+n.config.Alias,
-		buildTopicNodeEvent(n.config.Alias, "start"),
+		"flux.node.on_start."+n.config.ID,
+		buildTopicNodeEvent(n.config.ID, "start"),
 		n.sub,
 		func(msg *message.Message) error {
-			if err := handler(n.config.Alias); err != nil {
+			if err := handler(n.config.ID); err != nil {
 				return err
 			}
 			msg.Ack()
@@ -160,11 +161,11 @@ func (n *Node[T]) OnStart(handler NodeEventHandler) {
 
 func (n *Node[T]) OnStop(handler NodeEventHandler) {
 	n.router.AddNoPublisherHandler(
-		"flux.node.on_stop."+n.config.Alias,
-		buildTopicNodeEvent(n.config.Alias, "stop"),
+		"flux.node.on_stop."+n.config.ID,
+		buildTopicNodeEvent(n.config.ID, "stop"),
 		n.sub,
 		func(msg *message.Message) error {
-			if err := handler(n.config.Alias); err != nil {
+			if err := handler(n.config.ID); err != nil {
 				return err
 			}
 			msg.Ack()
@@ -180,7 +181,7 @@ func (n *Node[T]) Push(port string, data any) error {
 	}
 
 	return n.pub.Publish(
-		buildTopicNodePort(n.config.Alias, port),
+		buildTopicNodePort(n.config.ID, port),
 		message.NewMessage(watermill.NewUUID(), payload),
 	)
 }
@@ -231,7 +232,7 @@ func (n *Node[T]) OnTick(handler func(node NodeConfig[T], deltaTime time.Duratio
 
 	case TimerTypeGlobal:
 		n.router.AddNoPublisherHandler(
-			"flux.node.on_tick."+n.config.Alias,
+			"flux.node.on_tick."+n.config.ID,
 			"service/tick",
 			n.sub,
 			func(msg *message.Message) error {

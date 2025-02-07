@@ -4,13 +4,16 @@ import (
 	"log/slog"
 
 	"github.com/ThreeDotsLabs/watermill/message"
+
+	"github.com/flux-agi/flux_go/fluxmq"
 )
 
 type ServiceOptions struct {
 	logger *slog.Logger
 	pub    message.Publisher
 	sub    message.Subscriber
-	state  []byte
+	call   fluxmq.Caller
+	state  *State
 }
 
 type ServiceOption func(*ServiceOptions)
@@ -33,7 +36,13 @@ func WithServiceSub(sub message.Subscriber) ServiceOption {
 	}
 }
 
-func WithServiceState(state []byte) ServiceOption {
+func WithServiceCall(call fluxmq.Caller) ServiceOption {
+	return func(o *ServiceOptions) {
+		o.call = call
+	}
+}
+
+func WithServiceState(state *State) ServiceOption {
 	return func(o *ServiceOptions) {
 		o.state = state
 	}

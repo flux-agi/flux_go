@@ -35,8 +35,9 @@ func (s *Service[T]) OnServiceTick(ctx context.Context, r *message.Router, nodes
 						return
 
 					case <-tick:
-						handler(node.Alias, lastTick.Sub(time.Now()), time.Now())
-						lastTick = time.Now()
+						now := time.Now()
+						handler(node.ID, lastTick.Sub(now), now)
+						lastTick = now
 					}
 				}
 			}()
@@ -49,8 +50,9 @@ func (s *Service[T]) OnServiceTick(ctx context.Context, r *message.Router, nodes
 						return
 
 					default:
-						handler(node.Alias, lastTick.Sub(time.Now()), time.Now())
-						lastTick = time.Now()
+						now := time.Now()
+						handler(node.ID, lastTick.Sub(now), now)
+						lastTick = now
 
 						time.Sleep(time.Duration(node.Timer.Interval) * time.Millisecond)
 					}
@@ -147,7 +149,7 @@ func (s *Service[T]) OnServiceConnect(handler func() error) {
 	s.onConnect = handler
 }
 
-func (s *Service[T]) OnServiceReady(handler func(NodesConfig[T], *message.Router, message.Publisher, message.Subscriber) error) {
+func (s *Service[T]) OnServiceReady(handler func(NodesConfig[T]) error) {
 	s.onReady = handler
 }
 
