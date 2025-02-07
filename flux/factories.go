@@ -6,6 +6,8 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-nats/v2/pkg/nats"
 	"github.com/ThreeDotsLabs/watermill/message"
+
+	"github.com/flux-agi/flux_go/fluxmq"
 )
 
 func DefaultPublisherFactory(url string) PublisherFactory {
@@ -62,6 +64,23 @@ func DefaultSubscriberFactory(url string) SubscriberFactory {
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create nats subscriber: %w", err)
+		}
+
+		return factory, nil
+	}
+}
+
+func DefaultCallerFactory(url string) CallerFactory {
+	return func(_ watermill.LoggerAdapter) (fluxmq.Caller, error) {
+		factory, err := fluxmq.NewNatsCaller(
+			&fluxmq.NatsCallerConfig{
+				URL:         url,
+				Marshaler:   nil,
+				Unmarshaler: nil,
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create nats caller: %w", err)
 		}
 
 		return factory, nil

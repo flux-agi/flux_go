@@ -9,6 +9,8 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
+
+	"github.com/flux-agi/flux_go/fluxmq"
 )
 
 type Service[T any] struct {
@@ -19,6 +21,7 @@ type Service[T any] struct {
 	router          *message.Router
 	pub             message.Publisher
 	sub             message.Subscriber
+	call            fluxmq.Caller
 
 	// onConnect func will be called in Run method after pub & sub creation
 	onConnect func() error
@@ -45,6 +48,7 @@ func NewService[T any](opts ...ServiceOption) *Service[T] {
 		logger: nil,
 		pub:    nil,
 		sub:    nil,
+		call:   nil,
 		state:  NewState(),
 	}
 
@@ -56,6 +60,7 @@ func NewService[T any](opts ...ServiceOption) *Service[T] {
 		logger:    options.logger,
 		pub:       options.pub,
 		sub:       options.sub,
+		call:      options.call,
 		serviceID: serviceID,
 		onConnect: nil,
 		onReady:   nil,
@@ -74,10 +79,13 @@ func (s *Service[T]) Run(ctx context.Context, opts ...ConnectOption) error {
 
 	options := &RunOptions{
 		watermillLogger: watermill.NopLogger{},
-		pubFactory:      DefaultPublisherFactory(DefaultNatsURL),
-		subFactory:      DefaultSubscriberFactory(DefaultNatsURL),
-		routerFactory:   DefaultRouterFactory,
-		configTimeout:   DefaultConfigWaitingTimeout,
+		// TODO: use same connection for pub, sub and call.
+		pubFactory:  DefaultPublisherFactory(DefaultNatsURL),
+		subFactory:  DefaultSubscriberFactory(DefaultNatsURL),
+		callFactory: DefaultCallerFactory(DefaultNatsURL),
+
+		routerFactory: DefaultRouterFactory,
+		configTimeout: DefaultConfigWaitingTimeout,
 	}
 	for _, opt := range opts {
 		opt(options)
