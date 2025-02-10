@@ -65,7 +65,7 @@ func NewService[T any](opts ...ServiceOption) *Service[T] {
 		onConnect: nil,
 		onReady:   nil,
 		topics:    NewTopics(serviceID),
-		status:    NewAtomicValue(ServiceStatusInitializing),
+		status:    NewAtomicValue(ServiceStatusStarting),
 		state:     options.state,
 		nodes:     make([]Node[T], 0),
 	}

@@ -91,7 +91,7 @@ func (s *Service[T]) OnServiceRestart(r *message.Router, handler message.NoPubli
 				return err
 			}
 
-			if err := s.UpdateStatus(ServiceStatusActive); err != nil {
+			if err := s.UpdateStatus(ServiceStatusReady); err != nil {
 				return fmt.Errorf("cannot update status after restart: %w", err)
 			}
 
@@ -114,7 +114,7 @@ func (s *Service[T]) OnServiceStart(r *message.Router, handler message.NoPublish
 		"flux.on_start",
 		s.topics.Start(),
 		s.sub,
-		s.handlerWithStatusUpdate(handler, ServiceStatusActive),
+		s.handlerWithStatusUpdate(handler, ServiceStatusReady),
 	)
 }
 

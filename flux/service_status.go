@@ -10,12 +10,11 @@ import (
 type ServiceStatus string
 
 const (
-	ServiceStatusInitializing ServiceStatus = "initializing"
-	ServiceStatusConnected    ServiceStatus = "CONNECTED"
-	ServiceStatusReady        ServiceStatus = "READY"
-	ServiceStatusActive       ServiceStatus = "ACTIVE"
-	ServiceStatusPaused       ServiceStatus = "PAUSED"
-	ServiceStatusError        ServiceStatus = "ERROR"
+	ServiceStatusStarting  ServiceStatus = "STARTING"
+	ServiceStatusConnected ServiceStatus = "CONNECTED"
+	ServiceStatusReady     ServiceStatus = "READY"
+	ServiceStatusPaused    ServiceStatus = "PAUSED"
+	ServiceStatusError     ServiceStatus = "ERROR"
 )
 
 func (s *Service[T]) RegisterStatusHandler() {
