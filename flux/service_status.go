@@ -10,6 +10,8 @@ import (
 type ServiceStatus string
 
 const (
+	// ServiceStatusStarting is a default status that service has while running.
+	// This status sent by manager to client on deploy, so you should not send it yourself.
 	ServiceStatusStarting  ServiceStatus = "STARTING"
 	ServiceStatusConnected ServiceStatus = "CONNECTED"
 	ServiceStatusReady     ServiceStatus = "READY"
