@@ -120,7 +120,40 @@ func (s *Service[T]) Run(ctx context.Context, opts ...ConnectOption) error {
 	s.router = options.routerFactory(options.watermillLogger)
 
 	s.RegisterStatusHandler()
-	s.RegisterConfigHandler(ctx)
+
+	cfg, err := s.GetConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get config: %w", err)
+	}
+
+	resultNodes := make([]Node[T], 0, len(s.nodes))
+	for _, nodeConfig := range *cfg {
+		node := NewNode[T](
+			ctx,
+			s.router,
+			s.sub,
+			s.pub,
+			nodeConfig,
+		)
+
+		if err := node.RegisterHandlers(&s.nodeHandlers); err != nil {
+			return fmt.Errorf("failed to register node handlers: %w", err)
+		}
+
+		resultNodes = append(resultNodes, *node)
+	}
+
+	s.nodes = resultNodes
+
+	if s.onReady != nil {
+		if err := s.onReady(*cfg); err != nil {
+			return fmt.Errorf("failed to read config: %w", err)
+		}
+	}
+
+	if err := s.UpdateStatus(ServiceStatusReady); err != nil {
+		return fmt.Errorf("failed to update service status: %w", err)
+	}
 
 	if err := s.router.Run(ctx); err != nil {
 		return fmt.Errorf("failed to run router: %w", err)
@@ -179,71 +212,4 @@ func (s *Service[T]) PubToTopic(topic string, value any) error {
 	}
 
 	return s.pub.Publish(topic, message.NewMessage(watermill.NewUUID(), data))
-}
-
-func (s *Service[T]) reloadNodes(ctx context.Context, nodes *NodesConfig[T]) error {
-	for _, node := range s.nodes {
-		if err := node.Close(); err != nil {
-			s.logger.Error("failed to close node", slog.String("err", err.Error()))
-		}
-	}
-
-	resultNodes := make([]Node[T], 0)
-	for _, nodeCfg := range *nodes {
-		router := DefaultRouterFactory(s.watermillLogger)
-		sub, err := DefaultSubscriberFactory(DefaultNatsURL)(s.watermillLogger)
-		if err != nil {
-			return fmt.Errorf("failed to create nats sub: %w", err)
-		}
-
-		node := NewNode[T](
-			ctx,
-			router,
-			sub,
-			s.pub,
-			nodeCfg,
-		)
-
-		if err := node.RegisterHandlers(&s.nodeHandlers); err != nil {
-			return fmt.Errorf("failed to register node handlers: %w", err)
-		}
-
-		resultNodes = append(resultNodes, *node)
-	}
-
-	s.nodes = resultNodes
-
-	return nil
-}
-
-func (s *Service[T]) RegisterConfigHandler(ctx context.Context) {
-	s.router.AddNoPublisherHandler(
-		"flux.service.response_config",
-		s.topics.ResponseConfig(),
-		s.sub,
-		func(msg *message.Message) error {
-			var cfg NodesConfig[T]
-			if err := json.Unmarshal(msg.Payload, &cfg); err != nil {
-				return fmt.Errorf("failed to unmarshal config: %w", err)
-			}
-
-			if s.onReady != nil {
-				if err := s.onReady(cfg); err != nil {
-					return fmt.Errorf("failed to read config: %w", err)
-				}
-			}
-
-			if err := s.reloadNodes(ctx, &cfg); err != nil {
-				return fmt.Errorf("failed to reload nodes: %w", err)
-			}
-
-			if err := s.UpdateStatus(ServiceStatusReady); err != nil {
-				return fmt.Errorf("failed to update service status: %w", err)
-			}
-
-			msg.Ack()
-
-			return nil
-		},
-	)
 }

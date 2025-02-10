@@ -127,13 +127,6 @@ func (n *Node[T]) RegisterHandlers(handlers *NodeHandlers[T]) error {
 		}
 	}
 
-	go func() {
-		// TODO: run handlers
-		if err := n.router.Run(n.ctx); err != nil {
-			slog.Error("error run router", slog.String("node", n.config.ID), slog.Any("err", err))
-		}
-	}()
-
 	return nil
 }
 
