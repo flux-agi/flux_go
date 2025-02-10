@@ -10,11 +10,16 @@ type NodesConfig[T any] []NodeConfig[T]
 
 // NodeConfig is a node config
 type NodeConfig[T any] struct {
-	ID      string        `json:"_id,omitempty"` //nolint:tagliatelle
-	Inputs  []InputPort   `json:"input_ports,omitempty"`
-	Outputs []OutputPort  `json:"output_ports,omitempty"`
+	ID      string        `json:"id,omitempty"`
+	Inputs  []*Port       `json:"inputs,omitempty"`
+	Outputs []*Port       `json:"outputs,omitempty"`
 	Timer   *TickSettings `json:"timer,omitempty"`
 	Config  T             `json:"config,omitempty"`
+}
+
+type Port struct {
+	Alias  string   `json:"alias"`
+	Topics []string `json:"topics"`
 }
 
 // TickSettings is a local tick settings of node.
