@@ -116,10 +116,6 @@ func (s *Service[T]) Run(ctx context.Context, opts ...ConnectOption) error {
 		return fmt.Errorf("failed to update service status: %w", err)
 	}
 
-	router := options.routerFactory(options.watermillLogger)
-
-	s.RegisterStatusHandler(router)
-
 	err = s.run(ctx, options.routerFactory)
 	if err != nil {
 		return fmt.Errorf("failed to run service: %w", err)
@@ -134,6 +130,11 @@ func (s *Service[T]) run(ctx context.Context, routerFactory RouterFactory) error
 		return fmt.Errorf("failed to subscribe to configs: %w", err)
 	}
 
+	err = s.requestConfig()
+	if err != nil {
+		return fmt.Errorf("failed to request config: %w", err)
+	}
+
 	var currentRouter *message.Router
 
 	for msg := range configs {
@@ -144,6 +145,7 @@ func (s *Service[T]) run(ctx context.Context, routerFactory RouterFactory) error
 		}
 
 		newRouter := routerFactory(s.watermillLogger)
+		s.RegisterStatusHandler(newRouter)
 
 		if s.onReady != nil {
 			err := s.onReady(newRouter, config)
@@ -175,6 +177,15 @@ func (s *Service[T]) run(ctx context.Context, routerFactory RouterFactory) error
 		if err != nil {
 			return fmt.Errorf("failed to run router: %w", err)
 		}
+	}
+
+	return nil
+}
+
+func (s *Service[T]) requestConfig() error {
+	err := s.pub.Publish(s.topics.RequestConfig(), message.NewMessage(watermill.NewUUID(), []byte(s.serviceID)))
+	if err != nil {
+		return fmt.Errorf("failed to publish message: %w", err)
 	}
 
 	return nil
