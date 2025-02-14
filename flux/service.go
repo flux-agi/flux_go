@@ -125,6 +125,9 @@ func (s *Service[T]) Run(ctx context.Context, opts ...ConnectOption) error {
 }
 
 func (s *Service[T]) run(ctx context.Context, routerFactory RouterFactory) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	configs, err := s.sub.Subscribe(ctx, s.topics.ResponseConfig())
 	if err != nil {
 		return fmt.Errorf("failed to subscribe to configs: %w", err)
@@ -173,10 +176,19 @@ func (s *Service[T]) run(ctx context.Context, routerFactory RouterFactory) error
 		})
 
 		msg.Ack()
-		err = currentRouter.Run(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to run router: %w", err)
-		}
+
+		go func() {
+			err = currentRouter.Run(ctx)
+			if err != nil {
+				cancel()
+				slog.DebugContext(
+					ctx,
+					"Failed to run router",
+					slog.String("service", s.serviceID),
+					slog.String("err", err.Error()),
+				)
+			}
+		}()
 	}
 
 	return nil
