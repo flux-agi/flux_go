@@ -248,6 +248,7 @@ linters-settings:
       - stdlib
       - github.com\/ThreeDotsLabs\/watermill\/message\.Subscriber
       - github.com\/ThreeDotsLabs\/watermill\/message\.Publisher
+      - github.com\/flux-agi\/flux_go\/fluxmq\.Caller
 
 issues:
   exclude-rules: []

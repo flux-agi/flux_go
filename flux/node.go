@@ -270,22 +270,13 @@ func (n *Node[T]) SetStatus(status NodeStatus) error {
 }
 
 func (n *Node[T]) Close() error {
-	var err error
-	if routerErr := n.router.Close(); routerErr != nil {
-		errors.Join(err, fmt.Errorf("could not close router: %w", routerErr))
-	}
-
-	if subErr := n.sub.Close(); subErr != nil {
-		errors.Join(err, fmt.Errorf("could not close subscriber: %w", subErr))
-	}
-
 	if n.onDestroyHandler != nil {
 		if destroyErr := n.onDestroyHandler(n.config); destroyErr != nil {
 			errors.Join(destroyErr, fmt.Errorf("could not run destroy handler: %w", destroyErr))
 		}
 	}
 
-	return err
+	return nil
 }
 
 func buildTopicNodePort(alias, port string) string { return fmt.Sprintf("node/%s/%s", alias, port) }
