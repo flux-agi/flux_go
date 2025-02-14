@@ -18,7 +18,6 @@ type Service[T any] struct {
 	logger    *slog.Logger
 
 	watermillLogger watermill.LoggerAdapter
-	router          *message.Router
 	pub             message.Publisher
 	sub             message.Subscriber
 	call            fluxmq.Caller
@@ -28,7 +27,7 @@ type Service[T any] struct {
 
 	// onReady func will be called in Run method after getting config
 	// it accepts raw payload from message.
-	onReady func(cfg NodesConfig[T]) error
+	onReady func(r *message.Router, cfg NodesConfig[T]) error
 
 	topics *ServiceTopics
 	status *AtomicValue[ServiceStatus]
@@ -117,23 +116,85 @@ func (s *Service[T]) Run(ctx context.Context, opts ...ConnectOption) error {
 		return fmt.Errorf("failed to update service status: %w", err)
 	}
 
-	s.router = options.routerFactory(options.watermillLogger)
+	router := options.routerFactory(options.watermillLogger)
 
-	s.RegisterStatusHandler()
+	s.RegisterStatusHandler(router)
 
-	cfg, err := s.GetConfig(ctx)
+	err = s.run(ctx, options.routerFactory)
 	if err != nil {
-		return fmt.Errorf("failed to get config: %w", err)
+		return fmt.Errorf("failed to run service: %w", err)
 	}
 
-	resultNodes := make([]Node[T], 0, len(s.nodes))
-	for _, nodeConfig := range *cfg {
+	return nil
+}
+
+func (s *Service[T]) run(ctx context.Context, routerFactory RouterFactory) error {
+	configs, err := s.sub.Subscribe(ctx, s.topics.ResponseConfig())
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to configs: %w", err)
+	}
+
+	var currentRouter *message.Router
+
+	for msg := range configs {
+		var config NodesConfig[T]
+		err := json.Unmarshal(msg.Payload, &config)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal config: %w", err)
+		}
+
+		newRouter := routerFactory(s.watermillLogger)
+
+		if s.onReady != nil {
+			err := s.onReady(newRouter, config)
+			if err != nil {
+				return fmt.Errorf("failed to read config: %w", err)
+			}
+		}
+
+		err = s.reloadNodes(ctx, &config, newRouter)
+		if err != nil {
+			return fmt.Errorf("failed to reload nodes: %w", err)
+		}
+
+		if currentRouter != nil {
+			err := currentRouter.Close()
+			if err != nil {
+				return fmt.Errorf("failed to close router: %w", err)
+			}
+		}
+
+		currentRouter = newRouter
+
+		currentRouter.AddPlugin(func(_ *message.Router) error {
+			return s.UpdateStatus(ServiceStatusReady)
+		})
+
+		msg.Ack()
+		err = currentRouter.Run(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to run router: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (s *Service[T]) reloadNodes(ctx context.Context, nodes *NodesConfig[T], router *message.Router) error {
+	for _, node := range s.nodes {
+		if err := node.Close(); err != nil {
+			s.logger.Error("failed to close node", slog.String("err", err.Error()))
+		}
+	}
+
+	resultNodes := make([]Node[T], 0)
+	for _, nodeCfg := range *nodes {
 		node := NewNode[T](
 			ctx,
-			s.router,
+			router,
 			s.sub,
 			s.pub,
-			nodeConfig,
+			nodeCfg,
 		)
 
 		if err := node.RegisterHandlers(&s.nodeHandlers); err != nil {
@@ -144,20 +205,6 @@ func (s *Service[T]) Run(ctx context.Context, opts ...ConnectOption) error {
 	}
 
 	s.nodes = resultNodes
-
-	if s.onReady != nil {
-		if err := s.onReady(*cfg); err != nil {
-			return fmt.Errorf("failed to read config: %w", err)
-		}
-	}
-
-	if err := s.UpdateStatus(ServiceStatusReady); err != nil {
-		return fmt.Errorf("failed to update service status: %w", err)
-	}
-
-	if err := s.router.Run(ctx); err != nil {
-		return fmt.Errorf("failed to run router: %w", err)
-	}
 
 	return nil
 }
@@ -198,8 +245,6 @@ func (s *Service[T]) State() *State {
 func (s *Service[T]) Pub() message.Publisher { return s.pub }
 
 func (s *Service[T]) Sub() message.Subscriber { return s.sub }
-
-func (s *Service[T]) Router() *message.Router { return s.router }
 
 func (s *Service[T]) PubToTopic(topic string, value any) error {
 	if topic == "" {
