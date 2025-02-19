@@ -10,11 +10,11 @@ type NodesConfig[T any] []NodeConfig[T]
 
 // NodeConfig is a node config
 type NodeConfig[T any] struct {
-	ID      string        `json:"id,omitempty"`
-	Inputs  []*Port       `json:"inputs,omitempty"`
-	Outputs []*Port       `json:"outputs,omitempty"`
-	Timer   *TickSettings `json:"timer,omitempty"`
-	Config  T             `json:"config,omitempty"`
+	ID      string        `json:"id"`
+	Inputs  []*Port       `json:"inputs"`
+	Outputs []*Port       `json:"outputs"`
+	Timer   *TickSettings `json:"timer"`
+	Config  T             `json:"config"`
 }
 
 type Port struct {
@@ -24,8 +24,8 @@ type Port struct {
 
 // TickSettings is a local tick settings of node.
 type TickSettings struct {
-	Type     TimerType `json:"type,omitempty"`
-	Interval int       `json:"intervalMs,omitempty"` //nolint:tagliatelle
+	Type     TimerType `json:"type"`
+	Interval int       `json:"intervalMs"` //nolint:tagliatelle
 }
 
 type TimerType string
