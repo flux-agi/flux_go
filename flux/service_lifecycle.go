@@ -158,3 +158,7 @@ func (s *Service[T]) OnServiceShutdown() {
 		s.logger.Error("failed to close subscriber", slog.String("err", err.Error()))
 	}
 }
+
+func (s *Service[T]) OnIDEStatus(handler func(status IDEStatusMessage) error) {
+	s.onIDEStatus = handler
+}

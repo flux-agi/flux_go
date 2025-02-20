@@ -30,6 +30,10 @@ type Service[T any] struct {
 	// it accepts raw payload from message.
 	onReady func(r *message.Router, cfg NodesConfig[T]) error
 
+	// onIDE status is a function that will be called, when IDE status received.
+	// manager send status to the service, when websocket connected/disconnected
+	onIDEStatus func(status IDEStatusMessage) error
+
 	topics *ServiceTopics
 	status *AtomicValue[ServiceStatus]
 	state  *State
@@ -65,6 +69,7 @@ func NewService[T any](opts ...ServiceOption) *Service[T] {
 		serviceID:       serviceID,
 		onConnect:       nil,
 		onReady:         nil,
+		onIDEStatus:     nil,
 		topics:          NewTopics(serviceID),
 		status:          NewAtomicValue(ServiceStatusStarting),
 		state:           options.state,
@@ -278,6 +283,7 @@ func (s *Service[T]) requestConfig() error {
 func (s *Service[T]) initRouter(options *RunOptions) (*message.Router, error) {
 	router := options.routerFactory(options.watermillLogger)
 	s.RegisterStatusHandler(router)
+	s.RegisterIDEStatusHandler(router)
 	router.AddPlugin(func(_ *message.Router) error {
 		return s.UpdateStatus(ServiceStatusReady)
 	})

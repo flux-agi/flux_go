@@ -34,3 +34,11 @@ func (t *ServiceTopics) GetCommonState() string {
 func (t *ServiceTopics) SetCommonState() string {
 	return fmt.Sprintf("service.%s.set_common_state", t.service)
 }
+
+// IDEStatus returns topic for subscribing on IDE statuses.
+//
+// When client connects to the manager, manager sends "status": "CONNECTED" into this topic.
+// When client disconnected, manager sends "status": "DISCONNECTED" into this topic.
+func (t *ServiceTopics) IDEStatus() string {
+	return "ide.status"
+}
