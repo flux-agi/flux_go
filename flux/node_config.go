@@ -10,11 +10,11 @@ type NodesConfig[T any] []NodeConfig[T]
 
 // NodeConfig is a node config
 type NodeConfig[T any] struct {
-	ID      string        `json:"id"`
-	Inputs  []*Port       `json:"inputs"`
-	Outputs []*Port       `json:"outputs"`
-	Timer   *TickSettings `json:"timer"`
-	Config  T             `json:"config"`
+	ID       string        `json:"id"`
+	Inputs   []*Port       `json:"inputs"`
+	Outputs  []*Port       `json:"outputs"`
+	Timer    *TickSettings `json:"timer"`
+	Settings T             `json:"settings"`
 }
 
 type Port struct {
