@@ -145,6 +145,15 @@ func (s *Service[T]) handlerWithStatusUpdate(
 	}
 }
 
+func (s *Service[T]) OnGetCommonData(router *message.Router, handler message.NoPublishHandlerFunc) {
+	router.AddNoPublisherHandler(
+		"flux.get_common_data",
+		s.topics.GetCommonData(),
+		s.Sub(),
+		handler,
+	)
+}
+
 func (s *Service[T]) OnServiceConnect(handler func() error) {
 	s.onConnect = handler
 }

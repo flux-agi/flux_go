@@ -30,7 +30,7 @@ type Service[T any] struct {
 	// it accepts raw payload from message.
 	onReady func(r *message.Router, cfg NodesConfig[T]) error
 
-	// onIDE status is a function that will be called, when IDE status received.
+	// onIDEStatus is a function that will be called, when IDE status received.
 	// manager send status to the service, when websocket connected/disconnected
 	onIDEStatus func(status IDEStatusMessage) error
 
