@@ -34,6 +34,13 @@ func (t *ServiceTopics) GetCommonState() string {
 func (t *ServiceTopics) SetCommonState() string {
 	return fmt.Sprintf("service.%s.set_common_state", t.service)
 }
+func (t *ServiceTopics) GetCommonData() string {
+	return fmt.Sprintf("service.%s.get_common_data", t.service)
+}
+
+func (t *ServiceTopics) SetCommonData() string {
+	return fmt.Sprintf("service.%s.set_common_data", t.service)
+}
 
 // IDEStatus returns topic for subscribing on IDE statuses.
 //
