@@ -13,6 +13,8 @@ type NodeConfig[T any] struct {
 	ID       string        `json:"id"`
 	Inputs   []*Port       `json:"inputs"`
 	Outputs  []*Port       `json:"outputs"`
+	Name     string        `json:"name"`
+	Type     string        `json:"type"`
 	Timer    *TickSettings `json:"timer"`
 	Settings T             `json:"settings"`
 }
