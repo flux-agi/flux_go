@@ -24,6 +24,7 @@ type NodeHandlers[T any] struct {
 	onSubscribe    map[string]func(node NodeConfig[T], payload []byte) error
 	onDestroy      func(node NodeConfig[T]) error
 	onTick         func(node NodeConfig[T], deltaTime time.Duration, timestamp time.Time) error
+	onSettings     func(node NodeConfig[T]) error
 	mu             sync.Mutex
 }
 
@@ -46,6 +47,10 @@ func (n *NodeHandlers[T]) OnSubscribe(port string, handler func(node NodeConfig[
 		n.onSubscribe = make(map[string]func(node NodeConfig[T], payload []byte) error)
 	}
 	n.onSubscribe[port] = handler
+}
+
+func (n *NodeHandlers[T]) OnSettings(handler func(node NodeConfig[T]) error) {
+	n.onSettings = handler
 }
 
 func (n *NodeHandlers[T]) GetSubscribeHandler(port string) (func(node NodeConfig[T], payload []byte) error, bool) {
@@ -125,6 +130,10 @@ func (n *Node[T]) RegisterHandlers(handlers *NodeHandlers[T]) error {
 		if err := n.OnSubscribe(port, handler); err != nil {
 			return fmt.Errorf("could not register subscribe handler: %w", err)
 		}
+	}
+
+	if handlers.onSettings != nil {
+		n.OnSettings(handlers.onSettings)
 	}
 
 	return nil
@@ -241,6 +250,29 @@ func (n *Node[T]) OnTick(handler func(node NodeConfig[T], deltaTime time.Duratio
 
 func (n *Node[T]) OnDestroy(handler func(node NodeConfig[T]) error) {
 	n.onDestroyHandler = handler
+}
+
+func (n *Node[T]) OnSettings(handler func(node NodeConfig[T]) error) {
+	n.router.AddNoPublisherHandler(
+		"flux.node.settings",
+		fmt.Sprintf("node/%s/set_settings", n.config.ID),
+		n.sub,
+		func(msg *message.Message) error {
+			var cfg NodeConfig[T]
+
+			err := json.Unmarshal(msg.Payload, &cfg)
+			if err != nil {
+				return fmt.Errorf("could not unmarshal payload: %w", err)
+			}
+
+			msg.Ack()
+
+			if err := handler(n.config); err != nil {
+				return err
+			}
+			return nil
+		},
+	)
 }
 
 func (n *Node[T]) State() []byte {

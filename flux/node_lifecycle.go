@@ -31,3 +31,7 @@ func (s *Service[T]) OnNodeSubscribe(port string, handler func(node NodeConfig[T
 func (s *Service[T]) OnNodeTick(handler func(node NodeConfig[T], deltaTime time.Duration, timestamp time.Time) error) {
 	s.nodeHandlers.OnTick(handler)
 }
+
+func (s *Service[T]) OnNodeSettings(handler func(node NodeConfig[T]) error) {
+	s.nodeHandlers.OnSettings(handler)
+}
