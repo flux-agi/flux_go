@@ -267,9 +267,12 @@ func (n *Node[T]) OnSettings(handler func(node NodeConfig[T]) error) {
 
 			msg.Ack()
 
+			n.config = cfg
+
 			if err := handler(n.config); err != nil {
 				return err
 			}
+
 			return nil
 		},
 	)
