@@ -252,22 +252,22 @@ func (n *Node[T]) OnDestroy(handler func(node NodeConfig[T]) error) {
 	n.onDestroyHandler = handler
 }
 
-func (n *Node[T]) OnSettings(handler func(node NodeConfig[T]) error) {
+func (n *Node[T]) OnSettings(handler func(settings NodeConfig[T]) error) {
 	n.router.AddNoPublisherHandler(
 		"flux.node.settings",
 		fmt.Sprintf("node.%s.set_settings", n.config.ID),
 		n.sub,
 		func(msg *message.Message) error {
-			var cfg NodeConfig[T]
+			var settings T
 
-			err := json.Unmarshal(msg.Payload, &cfg)
+			err := json.Unmarshal(msg.Payload, &settings)
 			if err != nil {
 				return fmt.Errorf("could not unmarshal payload: %w", err)
 			}
 
 			msg.Ack()
 
-			n.config = cfg
+			n.config.Settings = settings
 
 			if err := handler(n.config); err != nil {
 				return err
