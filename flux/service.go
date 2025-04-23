@@ -1,6 +1,7 @@
 package flux
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -83,12 +84,14 @@ func (s *Service[T]) Run(ctx context.Context, opts ...ConnectOption) error {
 		return fmt.Errorf("pub and sub must be nil if you want to run app this way")
 	}
 
+	url := cmp.Or(os.Getenv("NATS_URL"), DefaultNatsURL)
+
 	options := &RunOptions{
 		watermillLogger: watermill.NopLogger{},
 		// TODO: use same connection for pub, sub and call.
-		pubFactory:  DefaultPublisherFactory(DefaultNatsURL),
-		subFactory:  DefaultSubscriberFactory(DefaultNatsURL),
-		callFactory: DefaultCallerFactory(DefaultNatsURL),
+		pubFactory:  DefaultPublisherFactory(url),
+		subFactory:  DefaultSubscriberFactory(url),
+		callFactory: DefaultCallerFactory(url),
 
 		routerFactory: DefaultRouterFactory,
 		configTimeout: DefaultConfigWaitingTimeout,
