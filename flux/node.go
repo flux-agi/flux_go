@@ -254,7 +254,7 @@ func (n *Node[T]) OnDestroy(handler func(node NodeConfig[T]) error) {
 
 func (n *Node[T]) OnSettings(handler func(settings NodeConfig[T]) error) {
 	n.router.AddNoPublisherHandler(
-		"flux.node.settings",
+		fmt.Sprintf("flux.node.%s.set_settings", n.config.ID),
 		fmt.Sprintf("node.%s.set_settings", n.config.ID),
 		n.sub,
 		func(msg *message.Message) error {
